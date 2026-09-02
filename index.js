@@ -1,16 +1,29 @@
 const EXT_ID = 'xiaozhong-toolbox';
-const STORAGE_KEY = `${EXT_ID}:settings`;
 
-function getSettings() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = String(value ?? '');
+    return div.innerHTML;
 }
-function setSettings(v) { localStorage.setItem(STORAGE_KEY, JSON.stringify(v)); }
 
-function downloadBlob(blob, filename) {
+function getDownloadFilename(name, suffix = '_整理后') {
+    return `${String(name || '文件').replace(/[\\/:*?"<>|]+/g, '_').replace(/\.[^.]+$/, '')}${suffix}`;
+}
+
+function triggerBlobDownload(blob, filename) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.className = 'menu_button';
+    link.textContent = `保存 ${filename}`;
+    link.style.display = 'inline-block';
+    link.dataset.xztbDownload = '1';
+    return { url, link };
+}
+
+function clearOldDownload(container) {
+    container.querySelectorAll('[data-xztb-download="1"]').forEach(el => el.remove());
 }
 
 function indentJson(value) {
@@ -22,176 +35,254 @@ function reorderPresetPrompts(root) {
         throw new Error('不是可识别的 Preset：缺少 prompts 或 prompt_order。');
     }
 
-    // Build the effective prompt id sequence exactly from prompt_order entries.
-    // We do not change any prompt object or prompt_order data.
     const idSequence = [];
+    const seenIds = new Set();
     for (const orderBlock of root.prompt_order) {
         if (!orderBlock || !Array.isArray(orderBlock.order)) continue;
         for (const item of orderBlock.order) {
-            if (item && typeof item.identifier === 'string' && !idSequence.includes(item.identifier)) {
-                idSequence.push(item.identifier);
+            const id = item?.identifier;
+            if (typeof id === 'string' && !seenIds.has(id)) {
+                seenIds.add(id);
+                idSequence.push(id);
             }
         }
     }
 
     const byId = new Map();
     for (const prompt of root.prompts) {
-        if (prompt && typeof prompt.identifier === 'string') byId.set(prompt.identifier, prompt);
+        if (prompt && typeof prompt.identifier === 'string' && !byId.has(prompt.identifier)) {
+            byId.set(prompt.identifier, prompt);
+        }
     }
 
     const result = [];
-    const used = new Set();
+    const usedObjects = new Set();
     for (const id of idSequence) {
         const prompt = byId.get(id);
         if (prompt) {
             result.push(prompt);
-            used.add(id);
+            usedObjects.add(prompt);
         }
     }
 
-    // Preserve any prompts not referenced by prompt_order at the end, in their original order.
+    // Entries not referenced by prompt_order are never discarded; retain their
+    // original relative position at the end.
     for (const prompt of root.prompts) {
-        const id = prompt?.identifier;
-        if (typeof id !== 'string' || !used.has(id)) result.push(prompt);
+        if (!usedObjects.has(prompt)) result.push(prompt);
     }
 
     const output = structuredClone(root);
     output.prompts = result;
-    return { output, total: root.prompts.length, reordered: result.filter((p, i) => p !== root.prompts[i]).length };
+    return { output, total: root.prompts.length, referenced: idSequence.length };
 }
 
-async function handlePresetFile(file) {
+async function handlePresetFile(file, statusContainer) {
     const text = await file.text();
     let root;
-    try { root = JSON.parse(text); } catch (e) { throw new Error('JSON 解析失败：文件不是有效 JSON。'); }
-    const { output, total } = reorderPresetPrompts(root);
-    const base = file.name.replace(/\.json$/i, '');
-    downloadBlob(new Blob([indentJson(output)], { type: 'application/json;charset=utf-8' }), `${base}_整理后.json`);
-    return `整理完成：${total} 个提示词条目。仅重新排列 prompts 数组中的对象，其他数据保持不变。`;
+    try {
+        root = JSON.parse(text);
+    } catch {
+        throw new Error('JSON 解析失败：文件不是有效 JSON。');
+    }
+
+    const { output, total, referenced } = reorderPresetPrompts(root);
+    clearOldDownload(statusContainer);
+    const filename = `${getDownloadFilename(file.name)}.json`;
+    const blob = new Blob([indentJson(output)], { type: 'application/json;charset=utf-8' });
+    const { link } = triggerBlobDownload(blob, filename);
+    statusContainer.appendChild(link);
+    return `整理完成：${total} 个条目；按 prompt_order 排列 ${referenced} 个；其他条目保留在末尾。`;
 }
 
-async function convertImage(file, format, quality = 0.92) {
+async function convertImage(file, format, statusContainer) {
+    if (!file.type.startsWith('image/')) throw new Error('请选择图片文件。');
+
     const bitmap = await createImageBitmap(file);
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width; canvas.height = bitmap.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bitmap, 0, 0);
-    const mime = format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp';
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, mime, format === 'png' ? undefined : quality));
-    if (!blob) throw new Error('图片转换失败。');
-    const ext = format === 'jpeg' ? 'jpg' : format;
-    downloadBlob(blob, `${file.name.replace(/\.[^.]+$/, '')}.${ext}`);
-    return `${file.name} → ${ext.toUpperCase()}，${bitmap.width}×${bitmap.height}`;
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d', { alpha: true });
+        if (!ctx) throw new Error('当前环境无法创建图片画布。');
+
+        // JPEG has no alpha channel; use white background so transparent images
+        // do not become black when converted to JPEG.
+        if (format === 'jpeg') {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.drawImage(bitmap, 0, 0);
+
+        const mime = format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp';
+        const blob = await new Promise(resolve =>
+            canvas.toBlob(resolve, mime, format === 'png' ? undefined : 0.92),
+        );
+        if (!blob) throw new Error('图片转换失败。');
+
+        clearOldDownload(statusContainer);
+        const ext = format === 'jpeg' ? 'jpg' : format;
+        const filename = `${String(file.name).replace(/\.[^.]+$/, '')}.${ext}`;
+        const { link } = triggerBlobDownload(blob, filename);
+        statusContainer.appendChild(link);
+        return `转换完成：${file.name} → ${ext.toUpperCase()}（${bitmap.width}×${bitmap.height}，${Math.round(blob.size / 1024)} KB）`;
+    } finally {
+        bitmap.close?.();
+    }
 }
 
+async function getStRequestHeaders() {
+    // SillyTavern 1.18's request helper is still part of the frontend used by
+    // TauriTavern. It adds the headers expected by the retained API endpoints.
+    try {
+        const script = await import('/script.js');
+        if (typeof script.getRequestHeaders === 'function') {
+            return script.getRequestHeaders();
+        }
+    } catch (e) {
+        console.warn('[小众工具箱] 无法从 /script.js 获取请求头:', e);
+    }
+    return { 'Content-Type': 'application/json' };
+}
 
-async function fetchJson(url, body) {
-    const res = await fetch(url, {
+async function stPostJson(url, body) {
+    const headers = await getStRequestHeaders();
+    if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(body ?? {}),
     });
-    if (!res.ok) throw new Error(`${url} 返回 ${res.status}`);
-    return await res.json();
+    if (!response.ok) throw new Error(`${url} 返回 HTTP ${response.status}`);
+    return response.json();
+}
+
+async function getCharacters() {
+    try {
+        const contextModule = await import('/scripts/extensions.js');
+        const context = contextModule.getContext?.();
+        if (Array.isArray(context?.characters)) return context.characters;
+    } catch (e) {
+        console.warn('[小众工具箱] 获取角色列表失败:', e);
+    }
+
+    // Fallback to the global used by the upstream 1.18 frontend.
+    if (Array.isArray(globalThis.characters)) return globalThis.characters;
+    return [];
+}
+
+async function listWorldNames() {
+    const data = await stPostJson('/api/settings/get', {});
+    if (Array.isArray(data?.world_names)) return data.world_names;
+    if (Array.isArray(data)) return data;
+    throw new Error('无法读取 TauriTavern 的世界书列表。');
+}
+
+async function getWorld(name) {
+    return stPostJson('/api/worldinfo/get', { name });
 }
 
 async function scanOrphanedEmbeddedWorlds() {
-    const list = await fetchJson('/api/worldinfo/list', {});
-    const contextModule = await import('/scripts/extensions.js');
-    const context = contextModule.getContext();
-    const characters = Array.isArray(context?.characters) ? context.characters : [];
+    const names = await listWorldNames();
+    const characters = await getCharacters();
 
     const liveLinkedWorlds = new Map();
     for (const character of characters) {
         const world = character?.data?.extensions?.world;
         if (typeof world === 'string' && world.trim()) {
-            if (!liveLinkedWorlds.has(world)) liveLinkedWorlds.set(world, []);
-            liveLinkedWorlds.get(world).push(character?.name || character?.avatar || '未知角色');
+            const normalized = world.trim();
+            if (!liveLinkedWorlds.has(normalized)) liveLinkedWorlds.set(normalized, []);
+            liveLinkedWorlds.get(normalized).push(character?.name || character?.avatar || '未知角色');
         }
     }
 
     const candidates = [];
-    for (const item of Array.isArray(list) ? list : []) {
-        const name = item?.name || item?.file_id;
+    let inspected = 0;
+    for (const rawName of names) {
+        const name = typeof rawName === 'string' ? rawName : rawName?.name || rawName?.file_id;
         if (!name) continue;
+        inspected++;
         let data;
         try {
-            data = await fetchJson('/api/worldinfo/get', { name });
+            data = await getWorld(name);
         } catch (error) {
             console.warn('[小众工具箱] 读取世界书失败:', name, error);
             continue;
         }
 
         const original = data?.originalData;
-        const looksLikeCharacterBook = Boolean(
+        const looksLikeEmbeddedCharacterBook = Boolean(
             original &&
             typeof original === 'object' &&
-            Array.isArray(original.entries)
+            Array.isArray(original.entries),
         );
 
-        // A Character Card imported Lorebook is stored with originalData equal to the
-        // source character_book. A current character can independently link any world
-        // by data.extensions.world, so we only flag the embedded-book cases that have
-        // no current primary character link. This is a review candidate, never an
-        // automatic deletion decision.
-        if (looksLikeCharacterBook && !liveLinkedWorlds.has(name)) {
+        if (looksLikeEmbeddedCharacterBook && !liveLinkedWorlds.has(name)) {
             candidates.push({
                 name,
                 entries: original.entries.length,
                 sourceName: typeof original.name === 'string' ? original.name : '',
-                reason: '检测到角色卡嵌入式 Character Book 的 originalData，当前没有角色主世界书链接',
+                linkedCharacters: liveLinkedWorlds.get(name) || [],
             });
         }
     }
-    return { candidates, total: Array.isArray(list) ? list.length : 0 };
+
+    return { candidates, total: inspected };
 }
 
 function renderWorldCandidates(container, candidates) {
     container.innerHTML = '';
     if (!candidates.length) {
-        container.textContent = '未发现可确认的遗留角色世界书。';
+        container.textContent = '未发现符合条件的遗留角色世界书。';
         return;
     }
+
     const fragment = document.createDocumentFragment();
-    for (const c of candidates) {
+    for (const candidate of candidates) {
         const row = document.createElement('label');
         row.className = 'xztb-check-row';
-        row.innerHTML = `<input type="checkbox" data-world-name="${CSS.escape(c.name)}">` +
-            `<span><b>${escapeHtml(c.name)}</b><small>${escapeHtml(c.reason)}；${c.entries} 个条目</small></span>`;
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = candidate.name;
+        input.dataset.worldName = candidate.name;
+
+        const text = document.createElement('span');
+        const title = document.createElement('b');
+        title.textContent = candidate.name;
+        const detail = document.createElement('small');
+        detail.textContent = `检测到角色卡 Character Book 数据；当前未发现角色绑定；${candidate.entries} 个条目`;
+        text.append(title, detail);
+        row.append(input, text);
         fragment.appendChild(row);
     }
     container.appendChild(fragment);
 }
 
-function escapeHtml(value) {
-    const div = document.createElement('div');
-    div.textContent = String(value ?? '');
-    return div.innerHTML;
-}
-
 async function deleteSelectedWorlds(container, status) {
     const selected = [...container.querySelectorAll('input[data-world-name]:checked')]
-        .map(x => x.dataset.worldName)
+        .map(input => input.value)
         .filter(Boolean);
+
     if (!selected.length) {
         status.textContent = '没有选择要清理的世界书。';
         return;
     }
-    if (!confirm(`确定删除 ${selected.length} 个遗留世界书吗？此操作会直接删除 World Info 文件。`)) return;
+
+    if (!confirm(`确定删除 ${selected.length} 个世界书吗？删除后不能通过本工具撤销。`)) return;
+
     let deleted = 0;
+    const failed = [];
     for (const name of selected) {
         try {
-            const res = await fetch('/api/worldinfo/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name }),
-            });
-            if (res.ok) deleted++;
-        } catch (e) {
-            console.error('[小众工具箱] 删除世界书失败:', name, e);
+            await stPostJson('/api/worldinfo/delete', { name });
+            deleted++;
+        } catch (error) {
+            failed.push(`${name}: ${error?.message || error}`);
         }
     }
-    status.textContent = `已删除 ${deleted} 个世界书。`;
+
+    status.textContent = failed.length
+        ? `已删除 ${deleted} 个；失败 ${failed.length} 个。`
+        : `已删除 ${deleted} 个世界书。`;
     await runWorldScan(container, status);
 }
 
@@ -201,10 +292,21 @@ async function runWorldScan(container, status) {
         const { candidates, total } = await scanOrphanedEmbeddedWorlds();
         renderWorldCandidates(container, candidates);
         status.textContent = `已扫描 ${total} 个世界书，发现 ${candidates.length} 个候选。`;
-    } catch (e) {
-        console.error('[小众工具箱] 世界书扫描失败:', e);
-        status.textContent = `扫描失败：${e?.message || e}`;
+    } catch (error) {
+        console.error('[小众工具箱] 世界书扫描失败:', error);
+        status.textContent = `扫描失败：${error?.message || error}`;
     }
+}
+
+async function inspectZip(file, status) {
+    const header = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+    const isZip = header.length === 4 && header[0] === 0x50 && header[1] === 0x4b &&
+        (header[2] === 0x03 || header[2] === 0x05 || header[2] === 0x07) &&
+        (header[3] === 0x04 || header[3] === 0x06 || header[3] === 0x08);
+    if (!isZip) throw new Error('这个文件不是有效的 ZIP 文件。');
+
+    status.textContent = `已读取本机文件：${file.name}（${Math.round(file.size / 1024)} KB）。`;
+    status.insertAdjacentHTML('beforeend', '<br>当前 TauriTavern 公共 Host 接口没有“本地 ZIP → 扩展目录”的安装方法，因此本版本不会伪装成已安装。');
 }
 
 function createUI() {
@@ -214,93 +316,118 @@ function createUI() {
     root.id = `${EXT_ID}-root`;
     root.className = 'inline-drawer xztb-drawer';
     root.innerHTML = `
-      <div class="inline-drawer-toggle inline-drawer-header xztb-header">
-        <b>🧰 小众工具箱</b>
-        <div class="inline-drawer-icon fa-fw fa-solid fa-circle-chevron-down"></div>
-      </div>
-      <div class="inline-drawer-content xztb-content">
-        <div class="xztb-tool" data-tool="clean"><span>🧹 清理维护</span></div>
-        <div class="xztb-tool" data-tool="install"><span>📦 扩展安装</span></div>
-        <div class="xztb-tool" data-tool="image"><span>🖼️ 图片转换</span></div>
-        <div class="xztb-tool" data-tool="preset"><span>📋 Preset 整理</span></div>
-        <div class="xztb-tool" data-tool="personal"><span>🎨 个性化</span></div>
-        <div class="xztb-panel" data-panel="clean">
-          <div class="xztb-section-title">清理维护</div>
-          <div class="xztb-group">
-            <div class="xztb-subtitle">🌍 遗留角色世界书</div>
-            <div class="xztb-note">仅提示“具有角色卡 Character Book 来源、但当前没有角色主世界书链接”的世界书，不把普通未绑定世界书当垃圾。</div>
-            <div class="xztb-list" data-world-list></div>
-            <div class="xztb-row">
-              <button class="menu_button xztb-action" data-world-scan>扫描</button>
-              <button class="menu_button xztb-action" data-world-delete>清理选中</button>
+        <div class="inline-drawer-toggle inline-drawer-header xztb-header">
+            <b>🧰 小众工具箱</b>
+            <div class="inline-drawer-icon fa-fw fa-solid fa-circle-chevron-down"></div>
+        </div>
+        <div class="inline-drawer-content xztb-content">
+            <div class="xztb-tools">
+                <button class="menu_button xztb-tool" type="button" data-tool="clean">🧹 清理维护</button>
+                <button class="menu_button xztb-tool" type="button" data-tool="install">📦 扩展导入</button>
+                <button class="menu_button xztb-tool" type="button" data-tool="image">🖼️ 图片转换</button>
+                <button class="menu_button xztb-tool" type="button" data-tool="preset">📋 Preset 整理</button>
             </div>
-            <div class="xztb-status" data-world-status></div>
-          </div>
-          <div class="xztb-group">
-            <div class="xztb-subtitle">🗨️ 长期未使用聊天</div>
-            <div class="xztb-note">聊天清理入口先保留；下一步接入 TauriTavern 的完整历史索引，而不是读取当前窗口的 chat 数组。</div>
-          </div>
-          <div class="xztb-group">
-            <div class="xztb-subtitle">🗑️ 缓存 / 🧩 扩展残留</div>
-            <div class="xztb-note">暂不猜测宿主目录。等公开 Host 能力明确后接入安全扫描。</div>
-          </div>
-        </div>
-        <div class="xztb-panel" data-panel="install">
-          <div class="xztb-section-title">扩展安装</div>
-          <div class="xztb-note">ZIP 安装器作为下一阶段接入，遵循 TauriTavern 的归档安全检查规则。</div>
-        </div>
-        <div class="xztb-panel" data-panel="image">
-          <div class="xztb-section-title">图片转换</div>
-          <input class="text_pole" type="file" accept="image/*" data-image-file>
-          <div class="xztb-row">
-            <select class="text_pole" data-image-format>
-              <option value="png">PNG</option>
-              <option value="jpeg">JPEG</option>
-              <option value="webp">WEBP</option>
-            </select>
-            <button class="menu_button xztb-action" data-image-convert>转换并保存</button>
-          </div>
-          <div class="xztb-status" data-image-status></div>
-        </div>
-        <div class="xztb-panel" data-panel="preset">
-          <div class="xztb-section-title">Preset JSON 整理</div>
-          <div class="xztb-note">只按照 Preset 内置 prompt_order 对 prompts[] 重新排列；不修改任何条目数据或排序数据。</div>
-          <input class="text_pole" type="file" accept="application/json,.json" data-preset-file>
-          <button class="menu_button xztb-action" data-preset-sort>整理并导出</button>
-          <div class="xztb-status" data-preset-status></div>
-        </div>
-        <div class="xztb-panel" data-panel="personal">
-          <div class="xztb-section-title">个性化</div>
-          <label>工具箱显示名称</label>
-          <input class="text_pole" data-person-name placeholder="小众工具箱">
-          <label>工具箱入口图标（Emoji）</label>
-          <input class="text_pole" data-person-icon placeholder="🧰">
-          <button class="menu_button xztb-action" data-person-save>保存</button>
-          <div class="xztb-status" data-person-status></div>
-        </div>
-      </div>`;
 
-    // Prefer TauriTavern's extensions area; fall back to the native drawer if needed.
-    const target = document.querySelector('#extensions_settings2, #extensions_settings') || document.body;
+            <div class="xztb-panel" data-panel="clean">
+                <div class="xztb-group">
+                    <div class="xztb-subtitle">🌍 遗留角色世界书</div>
+                    <div class="xztb-note">只检查角色卡嵌入式 Character Book 形成的世界书；普通全局/独立世界书不会因为“没有角色绑定”而被当成垃圾。</div>
+                    <div class="xztb-list" data-world-list></div>
+                    <div class="xztb-row">
+                        <button class="menu_button" type="button" data-world-scan>扫描</button>
+                        <button class="menu_button" type="button" data-world-select-all>全选</button>
+                        <button class="menu_button" type="button" data-world-delete>清理选中</button>
+                    </div>
+                    <div class="xztb-status" data-world-status></div>
+                </div>
+
+                <div class="xztb-group">
+                    <div class="xztb-subtitle">🗨️ 长期未使用聊天</div>
+                    <div class="xztb-note">15 天阈值和完整聊天索引将在接入 TauriTavern 对应 Host 能力后启用；本版本不读取当前窗口的局部 chat 数组。</div>
+                </div>
+
+                <div class="xztb-group">
+                    <div class="xztb-subtitle">🗑️ 缓存</div>
+                    <div class="xztb-note">仅接入宿主明确允许清理的缓存；不会根据猜测路径直接删除文件。</div>
+                </div>
+
+                <div class="xztb-group">
+                    <div class="xztb-subtitle">🧩 已删除扩展数据</div>
+                    <div class="xztb-note">等 TauriTavern 的扩展数据存储/所有权接口确认后扫描；不会误删未知目录。</div>
+                </div>
+            </div>
+
+            <div class="xztb-panel xztb-hidden" data-panel="install">
+                <div class="xztb-group">
+                    <div class="xztb-subtitle">📦 从本机选择 ZIP</div>
+                    <input class="text_pole" type="file" accept=".zip,application/zip,application/x-zip-compressed" data-zip-file>
+                    <div class="xztb-note">文件来自手机/电脑本机“文件”选择器，不从酒馆内部文件列表取。</div>
+                    <div class="xztb-status" data-zip-status></div>
+                </div>
+            </div>
+
+            <div class="xztb-panel xztb-hidden" data-panel="image">
+                <div class="xztb-group">
+                    <div class="xztb-subtitle">🖼️ 图片格式转换</div>
+                    <input class="text_pole" type="file" accept="image/*" data-image-file>
+                    <div class="xztb-row">
+                        <select class="text_pole" data-image-format>
+                            <option value="png">PNG</option>
+                            <option value="jpeg">JPEG</option>
+                            <option value="webp">WEBP</option>
+                        </select>
+                        <button class="menu_button" type="button" data-image-convert>转换</button>
+                    </div>
+                    <div class="xztb-status" data-image-status></div>
+                </div>
+            </div>
+
+            <div class="xztb-panel xztb-hidden" data-panel="preset">
+                <div class="xztb-group">
+                    <div class="xztb-subtitle">📋 Preset JSON 整理</div>
+                    <div class="xztb-note">只读取 JSON 内已有的 prompt_order 作为排列依据，重新排列 prompts[] 对象；不改动任何对象内容、ID 或 prompt_order。</div>
+                    <input class="text_pole" type="file" accept="application/json,.json" data-preset-file>
+                    <button class="menu_button" type="button" data-preset-sort>整理</button>
+                    <div class="xztb-status" data-preset-status></div>
+                </div>
+            </div>
+        </div>`;
+
+    const target = document.querySelector('#extensions_settings2, #extensions_settings');
+    if (!target) {
+        console.warn('[小众工具箱] 未找到 TauriTavern 扩展区域，稍后重试。');
+        setTimeout(createUI, 500);
+        return;
+    }
     target.appendChild(root);
 
-    const settings = getSettings();
-    root.querySelector('[data-person-name]').value = settings.name || '小众工具箱';
-    root.querySelector('[data-person-icon]').value = settings.icon || '🧰';
-    root.querySelector('.xztb-header b').textContent = `${settings.icon || '🧰'} ${settings.name || '小众工具箱'}`;
-
-    root.querySelectorAll('.xztb-tool').forEach(tool => {
-        tool.addEventListener('click', () => {
-            const name = tool.dataset.tool;
-            root.querySelectorAll('.xztb-tool').forEach(t => t.classList.toggle('xztb-active', t === tool));
-            root.querySelectorAll('.xztb-panel').forEach(p => p.classList.toggle('xztb-hidden', p.dataset.panel !== name));
+    const showTool = (name) => {
+        root.querySelectorAll('.xztb-tool').forEach(tool => {
+            tool.classList.toggle('xztb-active', tool.dataset.tool === name);
         });
-    });
+        root.querySelectorAll('.xztb-panel').forEach(panel => {
+            panel.classList.toggle('xztb-hidden', panel.dataset.panel !== name);
+        });
+    };
+
+    root.querySelectorAll('.xztb-tool').forEach(tool => tool.addEventListener('click', () => showTool(tool.dataset.tool)));
+    showTool('clean');
 
     const worldList = root.querySelector('[data-world-list]');
     const worldStatus = root.querySelector('[data-world-status]');
     root.querySelector('[data-world-scan]').addEventListener('click', () => runWorldScan(worldList, worldStatus));
+    root.querySelector('[data-world-select-all]').addEventListener('click', () => {
+        worldList.querySelectorAll('input[data-world-name]').forEach(input => { input.checked = true; });
+    });
     root.querySelector('[data-world-delete]').addEventListener('click', () => deleteSelectedWorlds(worldList, worldStatus));
+
+    root.querySelector('[data-zip-file]').addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        const status = root.querySelector('[data-zip-status]');
+        if (!file) return;
+        try { await inspectZip(file, status); }
+        catch (e) { status.textContent = `ZIP 检查失败：${e?.message || e}`; }
+    });
 
     root.querySelector('[data-image-convert]').addEventListener('click', async () => {
         const file = root.querySelector('[data-image-file]').files?.[0];
@@ -308,8 +435,8 @@ function createUI() {
         const status = root.querySelector('[data-image-status]');
         if (!file) { status.textContent = '请选择图片。'; return; }
         status.textContent = '正在转换…';
-        try { status.textContent = await convertImage(file, format); }
-        catch (e) { status.textContent = e?.message || '转换失败。'; console.error(e); }
+        try { status.textContent = await convertImage(file, format, status); }
+        catch (e) { status.textContent = `转换失败：${e?.message || e}`; console.error('[小众工具箱]', e); }
     });
 
     root.querySelector('[data-preset-sort]').addEventListener('click', async () => {
@@ -317,22 +444,22 @@ function createUI() {
         const status = root.querySelector('[data-preset-status]');
         if (!file) { status.textContent = '请选择 Preset JSON。'; return; }
         status.textContent = '正在整理…';
-        try { status.textContent = await handlePresetFile(file); }
-        catch (e) { status.textContent = e?.message || '整理失败。'; console.error(e); }
-    });
-
-    root.querySelector('[data-person-save]').addEventListener('click', () => {
-        const name = root.querySelector('[data-person-name]').value.trim() || '小众工具箱';
-        const icon = root.querySelector('[data-person-icon]').value.trim() || '🧰';
-        setSettings({ name, icon });
-        root.querySelector('.xztb-header b').textContent = `${icon} ${name}`;
-        root.querySelector('[data-person-status]').textContent = '已保存。';
+        try { status.textContent = await handlePresetFile(file, status); }
+        catch (e) { status.textContent = `整理失败：${e?.message || e}`; console.error('[小众工具箱]', e); }
     });
 }
 
-export function init() {
+async function init() {
+    try {
+        const host = globalThis.__TAURITAVERN__;
+        const ready = host?.ready || globalThis.__TAURITAVERN_MAIN_READY__;
+        if (ready && typeof ready.then === 'function') await ready;
+    } catch (e) {
+        console.warn('[小众工具箱] TauriTavern Host 就绪等待失败，继续尝试挂载:', e);
+    }
     createUI();
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', createUI, { once: true });
-else createUI();
+init();
+
+export { init, reorderPresetPrompts };

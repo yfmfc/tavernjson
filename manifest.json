@@ -6,7 +6,9 @@
   "js": "index.js",
   "css": "style.css",
   "author": "小众工具箱",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "homePage": "",
-  "hooks": { "activate": "init" }
+  "hooks": {
+    "activate": "init"
+  }
 }

@@ -1,21 +1,16 @@
-# 小众工具箱
+# 小众工具箱 v0.2.1
 
-TauriTavern 专用前端扩展初版。
+TauriTavern 专用移动端辅助扩展。
 
-## 当前已实现
+## 已实现
 
-- Preset JSON 整理：按 `prompt_order[].order[].identifier` 重新排列 `prompts[]`；只改变数组中对象的排列，不改对象内容、不改 `prompt_order` 或其他字段；未被引用的 prompt 保持原相对顺序并放在末尾。
-- 图片转换：PNG / JPEG / WEBP 互转，浏览器端 Canvas 处理后直接保存，不依赖第三方网站。
-- 遗留角色世界书扫描：读取 `/api/worldinfo/list` + `/api/worldinfo/get`，识别具有 `originalData.entries` 的角色卡 Character Book 来源世界书，并排除当前仍被角色 `data.extensions.world` 引用的世界书；结果仅作为清理候选，不自动判断为垃圾。
-- 清理选中的遗留世界书：使用 TauriTavern/SillyTavern 兼容的 `/api/worldinfo/delete`。
+- 收纳式四功能入口：清理维护、扩展导入、图片转换、Preset 整理。
+- Preset JSON：读取 JSON 内已有 `prompt_order` 的 identifier 顺序，只重新排列 `prompts[]` 对象；不修改任何对象字段、ID、`prompt_order` 或其他数据。
+- 图片转换：从设备本机选择图片，PNG/JPEG/WEBP 互转，结果以本地文件方式保存。
+- 遗留角色世界书扫描：读取 TauriTavern 保留的 SillyTavern 1.18 World Info 接口，并使用前端标准请求头；只提示有 Character Book `originalData` 且当前没有角色主世界书绑定的候选。
 
-## 暂未实现
+## 目前限制
 
-- 15 天未使用聊天扫描：待接入 TauriTavern 完整聊天索引 API。
-- 缓存安全清理：待接入明确的 TauriTavern Host API，避免猜测宿主目录。
-- 已删除扩展数据：待接入宿主扩展/存储枚举能力。
-- 本项目的“个性化”目前只保存并修改扩展自身入口显示的名称/图标文字；不声称可以通过普通 Extension 改变 iOS 原生 App Bundle 图标。
-
-## 世界书依据
-
-SillyTavern 1.18.0 的 `convertCharacterBook()` 会生成 `{ entries: {}, originalData: characterBook }`；导入角色卡嵌入 World/Lorebook 时调用该转换并保存 World Info，随后把世界书名称作为角色的 `data.extensions.world` 链接回角色。World Info 保存接口把传入的整个 data JSON 原样写入世界书文件。因此 `originalData` 可以作为“角色卡 Character Book 来源”的强证据，而角色 `extensions.world` 用于排除仍有角色主绑定的世界书。
+- 本地 ZIP 选择和 ZIP 基础校验已实现，但当前 TauriTavern 公共 Host/API 没有把本地 ZIP 直接安装到 Extension 目录的公开接口，因此本版本不会假装安装成功。
+- 聊天 15 天清理、缓存清理、已删除扩展数据清理暂未接入，原因是需要 TauriTavern 的完整历史/文件系统/扩展存储公开能力，不能猜私有目录。
+- “修改 TauriTavern 在系统桌面上的 App 图标/名称”已从本插件删除，不通过 Extension 伪造原生 App 身份修改。
