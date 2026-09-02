@@ -1,8 +1,0 @@
-{
-  "display_name": "小众工具箱",
-  "version": "1.0.0",
-  "author": "OpenAI",
-  "description": "TauriTavern 离线本地维护、扩展 ZIP 导入、图片格式转换与 Preset JSON 整理工具箱。",
-  "js": "index.js",
-  "css": "style.css"
-}
