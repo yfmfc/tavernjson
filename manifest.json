@@ -1,0 +1,11 @@
+{
+  "display_name": "JSON 篡改器",
+  "loading_order": 9999,
+  "js": "index.js",
+  "css": "style.css",
+  "author": "OpenAI",
+  "version": "1.0.0",
+  "homePage": "https://github.com/your-account/chat-json-transformer",
+  "auto_update": true,
+  "minimum_client_version": "1.18.0"
+}
