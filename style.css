@@ -1,0 +1,83 @@
+#ttb-root { font-size: 14px; }
+#ttb-root button, #ttb-root select { font: inherit; color: inherit; }
+#ttb-open {
+  position: fixed;
+  right: 12px;
+  bottom: 74px;
+  z-index: 9999;
+  width: 42px;
+  height: 42px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: transparent;
+  opacity: .9;
+}
+#ttb-open:active { transform: scale(.97); }
+.ttb-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+}
+.ttb-panel {
+  width: min(720px, 96vw);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  border: 1px solid currentColor;
+  border-radius: 16px;
+  background: inherit;
+}
+.ttb-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid currentColor;
+  backdrop-filter: blur(12px);
+}
+.ttb-icon { border: 0; background: transparent; color: inherit; font-size: 24px; line-height: 1; }
+.ttb-body { display: grid; gap: 12px; padding: 12px; }
+.ttb-section { border: 1px solid currentColor; border-radius: 14px; padding: 12px; }
+.ttb-muted-section { opacity: .82; }
+.ttb-section-head { display:flex; justify-content:space-between; gap:10px; align-items: baseline; margin-bottom: 10px; }
+.ttb-hint, .ttb-drop small, .ttb-result, .ttb-row label, .ttb-check { opacity: .78; }
+.ttb-drop {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px dashed currentColor;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.ttb-drop span { font-weight: 600; }
+.ttb-check { display:flex; gap:8px; align-items:center; margin:10px 0; }
+.ttb-actions, .ttb-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
+.ttb-actions button, .ttb-row button, .ttb-row select, #ttb-image-export {
+  padding: 8px 12px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  background: transparent;
+}
+.ttb-actions button:disabled, .ttb-row button:disabled { opacity: .45; }
+.ttb-result { margin-top: 10px; line-height: 1.55; }
+.ttb-image-result { display:grid; gap:8px; margin-top:10px; }
+.ttb-image-result img { width:100%; max-height:320px; object-fit:contain; border:1px solid currentColor; border-radius:10px; }
+.ttb-image-result button { justify-self:start; }
+#ttb-root code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+@media (max-width: 600px) {
+  .ttb-panel { width: 100%; max-height: 92vh; border-radius: 14px; }
+  #ttb-open { right: 10px; bottom: 68px; }
+}
+
+#tauritavernToolboxSettings { margin: 8px 0; }
+#tauritavernToolboxSettings .ttb-settings-title,
+#tauritavernToolboxSettings .ttb-settings-row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+#tauritavernToolboxSettings .ttb-settings-title { font-weight:600; margin-bottom:8px; }
+#tauritavernToolboxSettings .ttb-settings-version,
+#tauritavernToolboxSettings .ttb-settings-note { opacity:.72; }
+#tauritavernToolboxSettings .ttb-settings-note { display:block; margin-top:8px; }

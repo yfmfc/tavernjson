@@ -1,0 +1,12 @@
+{
+  "display_name": "小众工具箱",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "OpenAI",
+  "version": "0.1.1",
+  "homePage": "",
+  "auto_update": false
+}
