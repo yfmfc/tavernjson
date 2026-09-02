@@ -1,0 +1,13 @@
+{
+  "display_name": "JSON 篡改器",
+  "loading_order": 9999,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "OpenAI",
+  "version": "2.1.0",
+  "homePage": "https://github.com/yfmfc/json-",
+  "auto_update": true,
+  "minimum_client_version": "1.18.0"
+}
