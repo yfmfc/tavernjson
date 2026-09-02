@@ -360,8 +360,9 @@ function createUI() {
             <div class="xztb-panel xztb-hidden" data-panel="install">
                 <div class="xztb-group">
                     <div class="xztb-subtitle">📦 从本机选择 ZIP</div>
-                    <input class="text_pole" type="file" accept=".zip,application/zip,application/x-zip-compressed" data-zip-file>
-                    <div class="xztb-note">文件来自手机/电脑本机“文件”选择器，不从酒馆内部文件列表取。</div>
+                    <input class="xztb-file-input" id="xztb-zip-file" type="file" accept=".zip,application/zip,application/x-zip-compressed" data-zip-file>
+                    <label class="menu_button xztb-file-button" for="xztb-zip-file">📂 选择本机 ZIP 文件</label>
+                    <div class="xztb-note" data-zip-selected>尚未选择文件。文件来自手机/电脑本机“文件”选择器。</div>
                     <div class="xztb-status" data-zip-status></div>
                 </div>
             </div>
@@ -369,7 +370,9 @@ function createUI() {
             <div class="xztb-panel xztb-hidden" data-panel="image">
                 <div class="xztb-group">
                     <div class="xztb-subtitle">🖼️ 图片格式转换</div>
-                    <input class="text_pole" type="file" accept="image/*" data-image-file>
+                    <input class="xztb-file-input" id="xztb-image-file" type="file" accept="image/*" data-image-file>
+                    <label class="menu_button xztb-file-button" for="xztb-image-file">📂 选择本机图片</label>
+                    <div class="xztb-note" data-image-selected>尚未选择图片。</div>
                     <div class="xztb-row">
                         <select class="text_pole" data-image-format>
                             <option value="png">PNG</option>
@@ -386,8 +389,10 @@ function createUI() {
                 <div class="xztb-group">
                     <div class="xztb-subtitle">📋 Preset JSON 整理</div>
                     <div class="xztb-note">只读取 JSON 内已有的 prompt_order 作为排列依据，重新排列 prompts[] 对象；不改动任何对象内容、ID 或 prompt_order。</div>
-                    <input class="text_pole" type="file" accept="application/json,.json" data-preset-file>
-                    <button class="menu_button" type="button" data-preset-sort>整理</button>
+                    <input class="xztb-file-input" id="xztb-preset-file" type="file" accept="application/json,.json" data-preset-file>
+                    <label class="menu_button xztb-file-button" for="xztb-preset-file">📂 选择本机 Preset JSON</label>
+                    <div class="xztb-note" data-preset-selected>尚未选择 JSON 文件。</div>
+                    <button class="menu_button" type="button" data-preset-sort>📋 开始整理</button>
                     <div class="xztb-status" data-preset-status></div>
                 </div>
             </div>
@@ -424,9 +429,16 @@ function createUI() {
     root.querySelector('[data-zip-file]').addEventListener('change', async (event) => {
         const file = event.target.files?.[0];
         const status = root.querySelector('[data-zip-status]');
+        const selected = root.querySelector('[data-zip-selected]');
         if (!file) return;
+        selected.textContent = `已选择：${file.name}（${Math.round(file.size / 1024)} KB）`;
         try { await inspectZip(file, status); }
         catch (e) { status.textContent = `ZIP 检查失败：${e?.message || e}`; }
+    });
+
+    root.querySelector('[data-image-file]').addEventListener('change', (event) => {
+        const file = event.target.files?.[0];
+        if (file) root.querySelector('[data-image-selected]').textContent = `已选择：${file.name}`;
     });
 
     root.querySelector('[data-image-convert]').addEventListener('click', async () => {
@@ -437,6 +449,11 @@ function createUI() {
         status.textContent = '正在转换…';
         try { status.textContent = await convertImage(file, format, status); }
         catch (e) { status.textContent = `转换失败：${e?.message || e}`; console.error('[小众工具箱]', e); }
+    });
+
+    root.querySelector('[data-preset-file]').addEventListener('change', (event) => {
+        const file = event.target.files?.[0];
+        if (file) root.querySelector('[data-preset-selected]').textContent = `已选择：${file.name}`;
     });
 
     root.querySelector('[data-preset-sort]').addEventListener('click', async () => {

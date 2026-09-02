@@ -12,3 +12,21 @@
 .xztb-list { max-height: 18rem; overflow: auto; }
 .xztb-check-row { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.4rem 0.25rem; }
 .xztb-check-row small { display: block; opacity: 0.72; margin-top: 0.15rem; }
+/* iOS/WebView-friendly local file picker: the actual input stays available to
+   the browser, while a normal visible label is the user-facing button. */
+.xztb-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+.xztb-file-button {
+    display: inline-block;
+    width: auto;
+    margin: 0.25rem 0;
+    cursor: pointer;
+    user-select: none;
+}
