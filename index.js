@@ -91,7 +91,7 @@ async function handlePresetFile(file, statusContainer) {
     const blob = new Blob([indentJson(output)], { type: 'application/json;charset=utf-8' });
     const { link } = triggerBlobDownload(blob, filename);
     statusContainer.appendChild(link);
-    return `整理完成：${total} 个条目；按 prompt_order 排列 ${referenced} 个；其他条目保留在末尾。`;
+    return { message: `整理完成：${total} 个条目；按 prompt_order 排列 ${referenced} 个；其他条目保留在末尾。`, filename };
 }
 
 async function convertImage(file, format, statusContainer) {
@@ -124,7 +124,7 @@ async function convertImage(file, format, statusContainer) {
         const filename = `${String(file.name).replace(/\.[^.]+$/, '')}.${ext}`;
         const { link } = triggerBlobDownload(blob, filename);
         statusContainer.appendChild(link);
-        return `转换完成：${file.name} → ${ext.toUpperCase()}（${bitmap.width}×${bitmap.height}，${Math.round(blob.size / 1024)} KB）`;
+        return { message: `转换完成：${file.name} → ${ext.toUpperCase()}（${bitmap.width}×${bitmap.height}，${Math.round(blob.size / 1024)} KB）`, filename };
     } finally {
         bitmap.close?.();
     }
@@ -363,7 +363,7 @@ function createUI() {
                     <input class="xztb-file-input" id="xztb-zip-file" type="file" accept=".zip,application/zip,application/x-zip-compressed" data-zip-file>
                     <label class="menu_button xztb-file-button" for="xztb-zip-file">📂 选择本机 ZIP 文件</label>
                     <div class="xztb-note" data-zip-selected>尚未选择文件。文件来自手机/电脑本机“文件”选择器。</div>
-                    <div class="xztb-status" data-zip-status></div>
+                    <div class="xztb-row"><button class="menu_button" type="button" data-zip-install disabled>确认导入 / 安装</button></div><div class="xztb-status" data-zip-status></div>
                 </div>
             </div>
 
@@ -432,8 +432,26 @@ function createUI() {
         const selected = root.querySelector('[data-zip-selected]');
         if (!file) return;
         selected.textContent = `已选择：${file.name}（${Math.round(file.size / 1024)} KB）`;
-        try { await inspectZip(file, status); }
+        try { await inspectZip(file, status); root.querySelector('[data-zip-install]').disabled = false; }
         catch (e) { status.textContent = `ZIP 检查失败：${e?.message || e}`; }
+    });
+
+    root.querySelector('[data-zip-install]').addEventListener('click', async () => {
+        const file = root.querySelector('[data-zip-file]').files?.[0];
+        const status = root.querySelector('[data-zip-status]');
+        if (!file) { status.textContent = '请先选择 ZIP 文件。'; return; }
+        if (!confirm(`确认导入/安装扩展：${file.name}？`)) return;
+        status.textContent = '正在尝试安装…';
+        try {
+            const host = globalThis.__TAURITAVERN__;
+            const api = host?.api || host;
+            const installer = api?.extensions?.installZip || api?.extensions?.installFromZip || api?.installExtensionZip;
+            if (typeof installer !== 'function') {
+                throw new Error('当前 TauriTavern 未公开本机 ZIP 安装接口。ZIP 已验证，但不能安全写入扩展目录。');
+            }
+            await installer(file);
+            status.textContent = '安装完成，请刷新扩展列表确认。';
+        } catch (e) { status.textContent = `导入失败：${e?.message || e}`; }
     });
 
     root.querySelector('[data-image-file]').addEventListener('change', (event) => {
@@ -447,7 +465,12 @@ function createUI() {
         const status = root.querySelector('[data-image-status]');
         if (!file) { status.textContent = '请选择图片。'; return; }
         status.textContent = '正在转换…';
-        try { status.textContent = await convertImage(file, format, status); }
+        try {
+            const result = await convertImage(file, format, status);
+            const link = status.querySelector('[data-xztb-download]');
+            status.insertAdjacentText('afterbegin', `${result.message} `);
+            if (link) { link.textContent = `⬇️ 导出 / 保存 ${result.filename}`; }
+        }
         catch (e) { status.textContent = `转换失败：${e?.message || e}`; console.error('[小众工具箱]', e); }
     });
 
@@ -461,7 +484,12 @@ function createUI() {
         const status = root.querySelector('[data-preset-status]');
         if (!file) { status.textContent = '请选择 Preset JSON。'; return; }
         status.textContent = '正在整理…';
-        try { status.textContent = await handlePresetFile(file, status); }
+        try {
+            const result = await handlePresetFile(file, status);
+            const link = status.querySelector('[data-xztb-download]');
+            status.insertAdjacentText('afterbegin', `${result.message} `);
+            if (link) { link.textContent = `⬇️ 导出 / 保存 ${result.filename}`; }
+        }
         catch (e) { status.textContent = `整理失败：${e?.message || e}`; console.error('[小众工具箱]', e); }
     });
 }
