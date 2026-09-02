@@ -9,6 +9,7 @@
 .xztb-note, .xztb-status, .xztb-result, .xztb-summary { opacity: 0.8; font-size: 0.9em; margin: 0.35rem 0; }
 .xztb-row { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.5rem; flex-wrap: wrap; }
 .xztb-row > * { flex: 1 1 8rem; }
+.xztb-grow { flex: 2 1 12rem; }
 .xztb-list { max-height: 18rem; overflow: auto; }
 .xztb-check-row { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.4rem 0.25rem; }
 .xztb-check-row small { display: block; opacity: 0.72; margin-top: 0.15rem; }
@@ -16,3 +17,8 @@
 .xztb-days { max-width: 6rem; }
 .xztb-clean-group { margin-top: 0.6rem; }
 .xztb-clean-group > summary { cursor: pointer; user-select: none; padding: 0.35rem 0; }
+.xztb-file-input { display: none; }
+.xztb-picker-button { width: 100%; margin-top: 0.35rem; }
+.xztb-range-label { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.xztb-range-label input[type="range"] { flex: 1 1 auto; }
+.xztb-range-label b { min-width: 3.2rem; text-align: right; }
