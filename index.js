@@ -1,4 +1,5 @@
 const EXT_ID = 'xiaozhong-toolbox';
+const EXT_VERSION = '0.3.3';
 const STORE_NAMESPACE = 'xiaozhong-toolbox';
 
 function getHost() {
@@ -699,20 +700,86 @@ async function clearSelectedChats(selected) {
     return { deleted, failures };
 }
 
+function renderNativeReadOnlyGroup(box, title, rows, kind) {
+    const details = document.createElement('details');
+    details.open = true;
+    details.className = 'xztb-clean-group';
+    const head = document.createElement('div');
+    head.className = 'xztb-row xztb-native-head';
+    const summaryEl = document.createElement('span');
+    summaryEl.className = 'xztb-clean-summary';
+    summaryEl.textContent = `${title}（${rows.length}）`;
+    head.appendChild(summaryEl);
+    if (kind === 'temp' && rows.length) {
+        const noteButton = document.createElement('button');
+        noteButton.type = 'button';
+        noteButton.className = 'menu_button';
+        noteButton.textContent = '全选';
+        noteButton.disabled = true;
+        noteButton.title = '系统临时目录可能包含其他程序或当前进程正在使用的文件，因此本版不提供批量删除。';
+        head.appendChild(noteButton);
+    }
+    details.appendChild(head);
+    const note = document.createElement('div');
+    note.className = 'xztb-note';
+    note.textContent = kind === 'temp'
+        ? '这里是系统临时目录，不等同于酒馆专属临时目录。为避免误删其他程序或当前进程文件，本版只扫描，不提供删除。'
+        : '应用缓存目录可能包含程序运行所需的可重建缓存或运行期资源，本版只扫描，不提供删除。';
+    details.appendChild(note);
+    if (rows.length) {
+        const list = document.createElement('div');
+        list.className = 'xztb-list';
+        rows.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'xztb-check-row';
+            div.textContent = `${item.name}${item.type === 'directory' ? '（目录）' : '（文件）'}`;
+            const small = document.createElement('small');
+            small.textContent = item.path;
+            div.appendChild(small);
+            list.appendChild(div);
+        });
+        details.appendChild(list);
+    } else {
+        const empty = document.createElement('div');
+        empty.className = 'xztb-note';
+        empty.textContent = '没有发现顶层项目。';
+        details.appendChild(empty);
+    }
+    box.appendChild(details);
+}
+
 function renderCleanResults(root, state) {
     const box = root.querySelector('[data-clean-results]');
     box.innerHTML = '';
-    const safeTotal = state.worldCandidates.length + state.chatCandidates.filter(r => !r.current).length + state.webCaches.length + state.nativeStorage.temp.length + state.nativeStorage.appCache.length;
+    const safeTotal = state.worldCandidates.length + state.chatCandidates.filter(r => !r.current).length + state.webCaches.length;
     const summary = document.createElement('div');
     summary.className = 'xztb-summary';
-    summary.textContent = `扫描完成：发现 ${safeTotal} 项可处理内容（世界书 ${state.worldCandidates.length}、旧聊天 ${state.chatCandidates.length}、Cache Storage ${state.webCaches.length}、原生临时/缓存 ${state.nativeStorage.temp.length + state.nativeStorage.appCache.length}）。`;
+    summary.textContent = `扫描完成：发现 ${safeTotal} 项可处理内容（世界书 ${state.worldCandidates.length}、旧聊天 ${state.chatCandidates.length}、Cache Storage ${state.webCaches.length}；原生临时/缓存仅扫描 ${state.nativeStorage.temp.length + state.nativeStorage.appCache.length}）。`;
     box.appendChild(summary);
     const renderGroup = (title, rows, key, detailFn, disabledFn = () => false) => {
         const details = document.createElement('details');
         details.open = rows.length > 0;
         details.className = 'xztb-clean-group';
         const summaryEl = document.createElement('summary');
-        summaryEl.textContent = `${title}（${rows.length}）`;
+        const summaryTitle = document.createElement('span');
+        summaryTitle.textContent = `${title}（${rows.length}）`;
+        summaryEl.appendChild(summaryTitle);
+        if (rows.length) {
+            const summaryAll = document.createElement('button');
+            summaryAll.type = 'button';
+            summaryAll.className = 'menu_button';
+            summaryAll.textContent = '全选';
+            summaryAll.title = '无需展开列表即可全选或取消全选';
+            summaryAll.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const inputs = [...list.querySelectorAll('input:not(:disabled)')];
+                const shouldSelect = inputs.some(input => !input.checked);
+                inputs.forEach(input => input.checked = shouldSelect);
+                summaryAll.textContent = shouldSelect ? '取消全选' : '全选';
+            });
+            summaryEl.appendChild(summaryAll);
+        }
         details.appendChild(summaryEl);
         if (!rows.length) {
             const empty = document.createElement('div');
@@ -722,6 +789,16 @@ function renderCleanResults(root, state) {
             box.appendChild(details);
             return;
         }
+        const actions = document.createElement('div');
+        actions.className = 'xztb-row';
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'menu_button';
+        clear.textContent = '清理选中';
+        clear.dataset.cleanAction = key;
+        actions.appendChild(clear);
+        box.appendChild(details);
+        details.appendChild(actions);
         const list = document.createElement('div');
         list.className = 'xztb-list';
         for (const rowData of rows) {
@@ -742,27 +819,15 @@ function renderCleanResults(root, state) {
             list.appendChild(label);
         }
         details.appendChild(list);
-        const actions = document.createElement('div');
-        actions.className = 'xztb-row';
-        const all = document.createElement('button');
-        all.type = 'button';
-        all.className = 'menu_button';
-        all.textContent = '全选';
-        all.addEventListener('click', () => list.querySelectorAll('input:not(:disabled)').forEach(x => x.checked = true));
-        const clear = document.createElement('button');
-        clear.type = 'button';
-        clear.className = 'menu_button';
-        clear.textContent = '清理选中';
-        clear.dataset.cleanAction = key;
-        actions.append(all, clear);
-        details.appendChild(actions);
+        const summaryButton = summaryEl.querySelector('button');
+        if (summaryButton) summaryButton.textContent = [...list.querySelectorAll('input:not(:disabled)')].every(input => input.checked) ? '取消全选' : '全选';
         box.appendChild(details);
     };
     renderGroup('🌍 角色卡导入后遗留世界书', state.worldCandidates, 'worldId', r => `${r.provenance}${r.sourceCharacter ? `；原角色：${r.sourceCharacter}` : ''}${r.sourceName ? `；Character Book：${r.sourceName}` : ''}；${r.entries} 个条目；当前没有活动引用`);
     renderGroup('🗨️ 超过设定天数未使用的聊天', state.chatCandidates, 'chatId', r => `${formatDate(r.time)}；角色：${r.characterName}${r.current ? '；当前聊天，不允许删除' : ''}`, r => r.current);
     renderGroup('🌐 浏览器 Cache Storage', state.webCaches, 'cacheId', r => `${r.entries} 个缓存请求；删除后资源可能重新缓存`);
-    renderGroup('🧺 原生临时目录', state.nativeStorage.temp, 'path', r => r.path);
-    renderGroup('📦 原生应用缓存', state.nativeStorage.appCache, 'path', r => r.path);
+    renderNativeReadOnlyGroup(box, '🧺 原生临时目录', state.nativeStorage.temp, 'temp');
+    renderNativeReadOnlyGroup(box, '📦 原生应用缓存', state.nativeStorage.appCache, 'appCache');
     const idb = document.createElement('details');
     idb.className = 'xztb-clean-group';
     const idbSummary = document.createElement('summary');
@@ -888,7 +953,7 @@ async function scanAllCleanup(root) {
         if (nativeResult.status === 'fulfilled') { state.nativeStorage = nativeResult.value; state.errors.push(...nativeResult.value.errors); } else state.errors.push(nativeResult.reason);
         root.__xztbCleanState = state;
         renderCleanResults(root, state);
-        status.textContent = `全面扫描完成：世界书 ${state.worldCandidates.length}，旧聊天 ${state.chatCandidates.length}，Cache Storage ${state.webCaches.length}，IndexedDB ${state.browserStorage.indexedDB.length}，原生临时/缓存 ${state.nativeStorage.temp.length + state.nativeStorage.appCache.length}。`;
+        status.textContent = `全面扫描完成：世界书 ${state.worldCandidates.length}，旧聊天 ${state.chatCandidates.length}，Cache Storage ${state.webCaches.length}，IndexedDB ${state.browserStorage.indexedDB.length}，原生临时/缓存扫描 ${state.nativeStorage.temp.length + state.nativeStorage.appCache.length}。`;
     } catch (error) {
         console.error('[小众工具箱] 清理扫描失败:', error);
         status.textContent = `扫描失败：${error?.message || error}`;
@@ -901,11 +966,7 @@ async function handleCleanAction(root, key) {
     if (!confirm(`确定清理选中的 ${list.length} 项吗？当前操作会直接调用删除接口。`)) return;
     try {
         let message = '';
-        if (key === 'path') {
-            const selected = [...list].map(x => x.value);
-            const result = await clearSelectedNative(selected.map(path => ({ path })));
-            message = `已删除原生文件 ${result.deleted} 项${result.failures ? `，失败 ${result.failures} 项` : ''}。`;
-        } else if (key === 'worldId') {
+        if (key === 'worldId') {
             const result = await clearSelectedWorlds([...list].map(x => x.value));
             message = `已删除世界书 ${result.deleted} 个${result.failures ? `，失败 ${result.failures} 个` : ''}。`;
         } else if (key === 'chatId') {
@@ -1375,7 +1436,7 @@ function createUI() {
     root.id = `${EXT_ID}-root`;
     root.className = 'inline-drawer xztb-drawer';
     root.innerHTML = `
-        <div class="inline-drawer-toggle inline-drawer-header xztb-header"><b>🧰 小众工具箱</b><div class="inline-drawer-icon fa-fw fa-solid fa-circle-chevron-down"></div></div>
+        <div class="inline-drawer-toggle inline-drawer-header xztb-header"><b>🧰 小众工具箱 v${EXT_VERSION}</b><div class="inline-drawer-icon fa-fw fa-solid fa-circle-chevron-down"></div></div>
         <div class="inline-drawer-content xztb-content">
             <div class="xztb-tools">
                 <button class="menu_button xztb-tool" type="button" data-tool="clean">🧹 清理维护</button>

@@ -22,3 +22,9 @@
 .xztb-range-label { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
 .xztb-range-label input[type="range"] { flex: 1 1 auto; }
 .xztb-range-label b { min-width: 3.2rem; text-align: right; }
+.xztb-native-head{align-items:center;justify-content:space-between}
+.xztb-clean-summary{font-weight:600}
+
+.xztb-clean-group > summary { display: flex; align-items: center; gap: 0.45rem; }
+.xztb-clean-group > summary > span { flex: 1 1 auto; min-width: 0; }
+.xztb-clean-group > summary > button { flex: 0 0 auto; margin-left: auto; }
