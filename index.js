@@ -1,5 +1,5 @@
 const EXT_ID = 'xiaozhong-toolbox';
-const EXT_VERSION = '0.3.3';
+const EXT_VERSION = '0.3.5';
 const STORE_NAMESPACE = 'xiaozhong-toolbox';
 
 function getHost() {
@@ -753,9 +753,36 @@ function renderCleanResults(root, state) {
     box.innerHTML = '';
     const safeTotal = state.worldCandidates.length + state.chatCandidates.filter(r => !r.current).length + state.webCaches.length;
     const summary = document.createElement('div');
-    summary.className = 'xztb-summary';
-    summary.textContent = `扫描完成：发现 ${safeTotal} 项可处理内容（世界书 ${state.worldCandidates.length}、旧聊天 ${state.chatCandidates.length}、Cache Storage ${state.webCaches.length}；原生临时/缓存仅扫描 ${state.nativeStorage.temp.length + state.nativeStorage.appCache.length}）。`;
+    summary.className = 'xztb-row xztb-summary-row';
+    const summaryText = document.createElement('span');
+    summaryText.className = 'xztb-summary';
+    summaryText.textContent = `扫描完成：发现 ${safeTotal} 项可处理内容（世界书 ${state.worldCandidates.length}、旧聊天 ${state.chatCandidates.length}、Cache Storage ${state.webCaches.length}；原生临时/缓存仅扫描 ${state.nativeStorage.temp.length + state.nativeStorage.appCache.length}）。`;
+    summaryText.style.flex = '1 1 auto';
+    const globalSelect = document.createElement('button');
+    globalSelect.type = 'button';
+    globalSelect.className = 'menu_button';
+    globalSelect.textContent = safeTotal ? '全选' : '无可选项目';
+    globalSelect.disabled = !safeTotal;
+    globalSelect.title = '无需展开任何清理项目即可全选或取消全选所有可处理内容';
+    summary.append(summaryText, globalSelect);
     box.appendChild(summary);
+    const updateGlobalSelectText = () => {
+        const inputs = [...box.querySelectorAll('input[data-world-id], input[data-chat-id], input[data-cache-id]')];
+        const selectable = inputs.filter(input => !input.disabled);
+        globalSelect.textContent = selectable.length && selectable.every(input => input.checked) ? '取消全选' : '全选';
+    };
+    globalSelect.addEventListener('click', event => {
+        event.preventDefault();
+        const inputs = [...box.querySelectorAll('input[data-world-id], input[data-chat-id], input[data-cache-id]')].filter(input => !input.disabled);
+        const shouldSelect = inputs.some(input => !input.checked);
+        inputs.forEach(input => input.checked = shouldSelect);
+        updateGlobalSelectText();
+        box.querySelectorAll('.xztb-clean-group > summary > button').forEach(button => {
+            const details = button.closest('details');
+            const groupInputs = [...details.querySelectorAll('input:not(:disabled)')];
+            if (groupInputs.length) button.textContent = groupInputs.every(input => input.checked) ? '取消全选' : '全选';
+        });
+    });
     const renderGroup = (title, rows, key, detailFn, disabledFn = () => false) => {
         const details = document.createElement('details');
         details.open = rows.length > 0;
@@ -764,8 +791,9 @@ function renderCleanResults(root, state) {
         const summaryTitle = document.createElement('span');
         summaryTitle.textContent = `${title}（${rows.length}）`;
         summaryEl.appendChild(summaryTitle);
+        let summaryAll = null;
         if (rows.length) {
-            const summaryAll = document.createElement('button');
+            summaryAll = document.createElement('button');
             summaryAll.type = 'button';
             summaryAll.className = 'menu_button';
             summaryAll.textContent = '全选';
@@ -777,6 +805,7 @@ function renderCleanResults(root, state) {
                 const shouldSelect = inputs.some(input => !input.checked);
                 inputs.forEach(input => input.checked = shouldSelect);
                 summaryAll.textContent = shouldSelect ? '取消全选' : '全选';
+                updateGlobalSelectText();
             });
             summaryEl.appendChild(summaryAll);
         }
@@ -809,6 +838,11 @@ function renderCleanResults(root, state) {
             input.disabled = disabledFn(rowData);
             input.dataset[key] = '1';
             input.value = rowData[key] ?? rowData.name ?? rowData.id ?? '';
+            input.addEventListener('change', () => {
+                const groupInputs = [...list.querySelectorAll('input:not(:disabled)')];
+                if (summaryAll && groupInputs.length) summaryAll.textContent = groupInputs.every(item => item.checked) ? '取消全选' : '全选';
+                updateGlobalSelectText();
+            });
             const text = document.createElement('span');
             const titleEl = document.createElement('b');
             titleEl.textContent = rowData.name || rowData.fileName || rowData.characterName || rowData.id;
@@ -1253,7 +1287,47 @@ async function verifyNativeDataRoot(rootPath) {
     return true;
 }
 
-async function resolveInstalledTarget(installedEntry, defaultMode = 'local') {
+async function findExistingNativeExtension(rootPath, manifest, extensionName) {
+    const candidates = [
+        { mode: 'global', base: joinNativePath(rootPath, 'extensions', 'third-party') },
+        { mode: 'local', base: joinNativePath(rootPath, 'default-user', 'extensions', 'third-party') },
+    ];
+    const desired = String(extensionName || '').toLowerCase();
+    const displayName = String(manifest?.display_name || '').trim().toLowerCase();
+    const matches = [];
+    for (const candidate of candidates) {
+        let entries;
+        try {
+            entries = await nativeReadDir(candidate.base);
+        } catch {
+            continue;
+        }
+        for (const entry of entries || []) {
+            const folder = String(entry?.name || '').trim();
+            if (!folder || entry?.isFile) continue;
+            let manifestData = null;
+            try {
+                const bytes = await nativeReadFile(joinNativePath(candidate.base, folder, 'manifest.json'));
+                manifestData = JSON.parse(new TextDecoder().decode(bytes));
+            } catch {
+            }
+            const folderMatch = folder.toLowerCase() === desired;
+            const manifestMatch = String(manifestData?.name || '').trim().toLowerCase() === desired;
+            const displayMatch = displayName && String(manifestData?.display_name || '').trim().toLowerCase() === displayName;
+            if (folderMatch || manifestMatch || displayMatch) matches.push({ ...candidate, folder, manifest: manifestData });
+        }
+    }
+    if (!matches.length) return null;
+    if (matches.length === 1) return matches[0];
+    const preferredMode = arguments.length > 3 ? arguments[3] : undefined;
+    if (preferredMode) {
+        const preferred = matches.find(item => item.mode === preferredMode);
+        if (preferred) return preferred;
+    }
+    return matches.find(item => item.mode === 'local') || matches[0];
+}
+
+async function resolveInstalledTarget(installedEntry, defaultMode = 'local', manifest = null, extensionName = '') {
     const remembered = localStorage.getItem('xiaozhong_toolbox_extensions_root_v2');
     let root = remembered ? { kind: 'native', path: remembered } : null;
     if (root?.kind === 'native') {
@@ -1265,9 +1339,14 @@ async function resolveInstalledTarget(installedEntry, defaultMode = 'local') {
     }
     if (!root) root = await chooseExtensionsRoot();
     if (!root) return null;
-    const globalInstall = defaultMode === 'global' || installedEntry?.type === 'global';
     if (root.kind === 'native') {
         await verifyNativeDataRoot(root.path);
+        const existing = manifest ? await findExistingNativeExtension(root.path, manifest, extensionName) : null;
+        if (existing) {
+            await nativeMkdir(existing.base);
+            return { kind: 'native', base: existing.base, mode: existing.mode, existingFolder: existing.folder };
+        }
+        const globalInstall = defaultMode === 'global' || installedEntry?.type === 'global';
         const base = globalInstall
             ? joinNativePath(root.path, 'extensions', 'third-party')
             : joinNativePath(root.path, 'default-user', 'extensions', 'third-party');
@@ -1277,14 +1356,14 @@ async function resolveInstalledTarget(installedEntry, defaultMode = 'local') {
     let dataHandle = root.handle;
     const extensionHandle = await dataHandle.getDirectoryHandle('extensions', { create: true });
     let baseHandle;
-    if (globalInstall) {
+    if (defaultMode === 'global' || installedEntry?.type === 'global') {
         baseHandle = await extensionHandle.getDirectoryHandle('third-party', { create: true });
-    } else {
-        const defaultUser = await dataHandle.getDirectoryHandle('default-user', { create: true });
-        const localExt = await defaultUser.getDirectoryHandle('extensions', { create: true });
-        baseHandle = await localExt.getDirectoryHandle('third-party', { create: true });
+        return { kind: 'handle', baseHandle, mode: 'global' };
     }
-    return { kind: 'handle', baseHandle, mode: globalInstall ? 'global' : 'local' };
+    const defaultUser = await dataHandle.getDirectoryHandle('default-user', { create: true });
+    const localExt = await defaultUser.getDirectoryHandle('extensions', { create: true });
+    baseHandle = await localExt.getDirectoryHandle('third-party', { create: true });
+    return { kind: 'handle', baseHandle, mode: 'local' };
 }
 
 async function getNativeZipFiles(file) {
@@ -1351,13 +1430,13 @@ async function removeDirectoryHandle(handle) {
 }
 
 async function installZipToNativeRoot(file, manifest, extensionName, installedEntry, mode) {
-    const target = await resolveInstalledTarget(installedEntry, mode);
+    const target = await resolveInstalledTarget(installedEntry, mode, manifest, extensionName);
     if (!target) return { cancelled: true };
     const zipInfo = await findZipManifest(file);
     const files = stripArchiveRoot(await getNativeZipFiles(file), zipInfo?.root || '');
     const manifestEntry = files.find(item => item.path.toLowerCase() === 'manifest.json');
     if (!manifestEntry) throw new Error('ZIP 目录整理失败：解压后找不到根 manifest.json。');
-    const folder = sanitizeExtensionFolder(extensionName);
+    const folder = sanitizeExtensionFolder(target.existingFolder || extensionName);
     const stamp = `${Date.now()}`;
     if (target.kind === 'native') {
         const dest = joinNativePath(target.base, folder);
