@@ -1,0 +1,18 @@
+/* Deliberately minimal: inherit TauriTavern/SillyTavern theme variables and components. */
+.xztb-content { padding: 0.5rem; }
+.xztb-tool { padding: 0.45rem 0.55rem; cursor: pointer; }
+.xztb-tool.xztb-active { opacity: 0.75; }
+.xztb-panel { padding: 0.5rem 0; }
+.xztb-hidden { display: none; }
+.xztb-row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
+.xztb-row > * { flex: 1; }
+.xztb-action { margin-top: 0.5rem; }
+.xztb-section-title { font-weight: 600; margin-bottom: 0.4rem; }
+.xztb-note, .xztb-status { opacity: 0.8; font-size: 0.9em; margin: 0.35rem 0; }
+.xztb-panel label { display: block; margin-top: 0.5rem; }
+
+.xztb-group { margin: 0.65rem 0; }
+.xztb-subtitle { font-weight: 600; margin-bottom: 0.35rem; }
+.xztb-list { max-height: 18rem; overflow: auto; }
+.xztb-check-row { display:flex; gap:0.5rem; align-items:flex-start; padding:0.4rem 0.25rem; }
+.xztb-check-row small { display:block; opacity:0.72; margin-top:0.15rem; }
