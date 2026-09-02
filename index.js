@@ -294,11 +294,29 @@ function getOriginalCharacterBook(data) {
     return null;
 }
 
-async function scanEmbeddedWorlds(livePrimaryLinks, characters, progress) {
+async function scanEmbeddedWorlds(characters, progress) {
     const worlds = await listWorlds();
-    const provenance = updateWorldProvenance(characters, worlds);
+    const livePrimary = new Map();
+    const liveSecondary = new Map();
+    for (const character of characters) {
+        const primary = getWorldBindingNames(character);
+        if (primary) livePrimary.set(primary, character?.name || '');
+        const extra = character?.data?.extensions?.world_info?.charLore;
+        if (Array.isArray(extra)) {
+            for (const row of extra) {
+                for (const name of (row?.extraBooks || [])) liveSecondary.set(normalizeWorldId(name), character?.name || '');
+            }
+        }
+    }
+    const selectedGlobal = new Set();
+    // ST 1.18 stores global World Info selection in settings.globalSelect.
+    try {
+        const settings = await stPostJson('/api/settings/get', {});
+        const globalSelect = settings?.globalSelect ?? settings?.world_info?.globalSelect ?? settings?.world_info?.selected_world_info;
+        if (Array.isArray(globalSelect)) globalSelect.forEach(x => selectedGlobal.add(normalizeWorldId(x)));
+    } catch (e) { console.warn('[小众工具箱] 获取全局世界书选择失败:', e); }
+
     const candidates = [], errors = [];
-    const liveLinks = new Set([...livePrimaryLinks.keys()].map(normalizeWorldId));
     for (let i = 0; i < worlds.length; i++) {
         const item = worlds[i] || {};
         const fileId = normalizeWorldId(item.file_id ?? item.name);
@@ -308,26 +326,29 @@ async function scanEmbeddedWorlds(livePrimaryLinks, characters, progress) {
         try {
             const data = extractWorldData(await getWorld(fileId));
             const original = getOriginalCharacterBook(data);
-            const recorded = provenance[fileId];
-            const live = liveLinks.has(fileId) || liveLinks.has(normalizeWorldId(displayName));
-            // Two independent provenance signals are accepted:
-            // 1) the World Info still contains the imported Character Book's originalData;
-            // 2) our local provenance ledger recorded that this world was created/used as a character-card book.
-            // The ledger is only written when a live character has both character_book and a primary world binding,
-            // so it does not classify an ordinary manually-created global world as an orphan.
-            if (!original && !recorded) continue;
-            if (live) continue;
+            if (!original) continue;
+            const id = normalizeWorldId(fileId);
+            const primaryCharacter = livePrimary.get(id) || livePrimary.get(normalizeWorldId(displayName));
+            const secondaryCharacter = liveSecondary.get(id) || liveSecondary.get(normalizeWorldId(displayName));
+            const global = selectedGlobal.has(id) || selectedGlobal.has(normalizeWorldId(displayName));
+            // Character Book provenance is intrinsic to the imported World Info via originalData.
+            // A world with originalData is therefore a character-card-imported lorebook.
+            // It becomes a cleanup candidate only when no live character primary/extra link remains
+            // and it is not currently selected as a global world. This specifically catches the case
+            // where the source character has already been deleted.
+            if (primaryCharacter || secondaryCharacter || global) continue;
             const entries = original?.entries
                 ? (Array.isArray(original.entries) ? original.entries.length : Object.keys(original.entries || {}).length)
-                : Array.isArray(data?.entries) ? data.entries.length : Object.keys(data?.entries || {}).length;
+                : 0;
             candidates.push({
                 worldId: fileId,
                 fileId,
                 name: displayName,
                 entries,
-                sourceName: original?.name || '',
-                sourceCharacter: recorded?.sourceCharacter || '',
-                provenance: original ? 'Character Book originalData' : '历史角色绑定记录',
+                sourceName: String(original?.name || ''),
+                sourceCharacter: '',
+                provenance: '角色卡 Character Book（originalData）',
+                confidence: 'high',
             });
         } catch (error) { errors.push({ fileId, error }); }
     }
@@ -335,24 +356,27 @@ async function scanEmbeddedWorlds(livePrimaryLinks, characters, progress) {
 }
 async function scanOldChats(days, characters, progress) {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const candidates = [], errors = [];
+    const candidates = [], errors = [], seen = new Set();
     for (let i = 0; i < characters.length; i++) {
         const character = characters[i] || {}, avatar = character.avatar;
         if (!avatar) continue;
         progress?.(`扫描聊天 ${i + 1}/${characters.length}…`);
         try {
             const response = await stFetch('/api/characters/chats', { method: 'POST', body: JSON.stringify({ avatar_url: avatar }) });
-            if (!response.ok) { errors.push({ character, error: new Error(`HTTP ${response.status}`) }); continue; }
-            const data = await response.json(); if (!data || data.error === true) continue;
+            if (!response.ok) { errors.push({ kind: 'chat', character, error: new Error(`HTTP ${response.status}`) }); continue; }
+            const data = await response.json();
+            if (!data || data.error === true) continue;
             for (const chat of Object.values(data)) {
                 if (!chat || !chat.file_name) continue;
-                const time = parseChatTimestamp(chat.last_mes ?? chat.date_last_chat ?? chat.last_message);
+                const time = parseChatTimestamp(chat.date_last_chat ?? chat.last_mes ?? chat.last_message ?? chat.updatedAt);
                 if (!Number.isFinite(time) || time >= cutoff) continue;
                 const fileName = String(chat.file_name).replace(/\.jsonl$/i, '');
+                const dedupeKey = `${avatar}::${fileName}`;
+                if (seen.has(dedupeKey)) continue; seen.add(dedupeKey);
                 const current = character.chat && String(character.chat) === fileName;
-                candidates.push({ characterName: character.name || '未知角色', avatar, fileName, chatId: fileName, time, current });
+                candidates.push({ characterName: character.name || '未知角色', avatar, fileName, chatId: dedupeKey, time, current });
             }
-        } catch (error) { errors.push({ character, error }); }
+        } catch (error) { errors.push({ kind: 'chat', character, error }); }
     }
     candidates.sort((a, b) => a.time - b.time);
     return { candidates, errors };
@@ -365,18 +389,32 @@ function parseChatTimestamp(value) {
     const parsed = Date.parse(trimmed); return Number.isFinite(parsed) ? parsed : NaN;
 }
 function formatDate(timestamp) { return new Date(timestamp).toLocaleString(); }
-
 async function scanWebCaches() {
     if (!('caches' in globalThis)) return { supported: false, caches: [] };
     const names = await caches.keys(); const result = [];
     for (const name of names) {
         let entries = [];
-        try { entries = await (await caches.open(name)).keys(); } catch { /* leave count unknown */ }
+        try { entries = await (await caches.open(name)).keys(); } catch { }
         result.push({ name, cacheId: name, entries: entries.length });
     }
     return { supported: true, caches: result };
 }
-
+async function scanLocalTempAndExtensionHints() {
+    const extensionIds = new Set();
+    const extensionsRoot = document.querySelector('#extensions_settings2, #extensions_settings');
+    extensionsRoot?.querySelectorAll('[data-extension-id], [id^="extension_"]').forEach(el => {
+        const id = el.getAttribute('data-extension-id') || el.id.replace(/^extension_/, '');
+        if (id) extensionIds.add(id);
+    });
+    const settings = globalThis.extension_settings && typeof globalThis.extension_settings === 'object' ? globalThis.extension_settings : null;
+    const storageCandidates = [];
+    if (settings) {
+        for (const key of Object.keys(settings)) {
+            if (!extensionIds.has(key)) storageCandidates.push({ id: key, kind: 'extension_settings', note: '存在扩展设置数据，但当前页面未发现同名扩展 UI；仅提示，不自动删除。' });
+        }
+    }
+    return { extensionIds: [...extensionIds], settingsCandidates: storageCandidates };
+}
 async function discoverHostCleanup() {
     const api = globalThis.__TAURITAVERN__?.api;
     return {
@@ -386,115 +424,95 @@ async function discoverHostCleanup() {
         tempClear: typeof api?.files?.clearTemp === 'function' || typeof api?.files?.cleanupTemp === 'function',
     };
 }
-
 async function clearSelectedWorlds(selected) {
-    let deleted = 0;
+    let deleted = 0, failures = 0;
     for (const item of selected) {
-        const response = await stFetch('/api/worldinfo/delete', { method: 'POST', body: JSON.stringify({ name: item }) });
-        if (response.ok) deleted++;
+        try {
+            const response = await stFetch('/api/worldinfo/delete', { method: 'POST', body: JSON.stringify({ name: normalizeWorldId(item) }) });
+            if (response.ok) deleted++; else failures++;
+        } catch { failures++; }
     }
-    return deleted;
+    return { deleted, failures };
 }
 async function clearSelectedChats(selected) {
-    let deleted = 0;
+    let deleted = 0, failures = 0;
     for (const item of selected) {
-        const response = await stFetch('/api/chats/delete', { method: 'POST', body: JSON.stringify({ chatfile: `${item.fileName}.jsonl`, avatar_url: item.avatar }) });
-        if (response.ok) deleted++;
+        try {
+            const response = await stFetch('/api/chats/delete', { method: 'POST', body: JSON.stringify({ chatfile: `${item.fileName}.jsonl`, avatar_url: item.avatar }) });
+            if (response.ok) deleted++; else failures++;
+        } catch { failures++; }
     }
-    return deleted;
+    return { deleted, failures };
 }
-
 function renderCleanResults(root, state) {
-    const box = root.querySelector('[data-clean-results]');
-    box.innerHTML = '';
+    const box = root.querySelector('[data-clean-results]'); box.innerHTML = '';
+    const safeTotal = state.worldCandidates.length + state.chatCandidates.filter(r => !r.current).length + state.webCaches.length;
     const summary = document.createElement('div'); summary.className = 'xztb-summary';
-    summary.textContent = `扫描完成：${state.worldCandidates.length} 个遗留角色世界书、${state.chatCandidates.length} 个长期未使用聊天、${state.webCaches.length} 个网页缓存。`;
+    summary.textContent = `扫描完成：发现 ${safeTotal} 项可处理内容（世界书 ${state.worldCandidates.length}、旧聊天 ${state.chatCandidates.length}、网页缓存 ${state.webCaches.length}）。`;
     box.appendChild(summary);
-
-    const renderGroup = (title, count, rows, key, detailFn, disabledFn = () => false) => {
-        const details = document.createElement('details'); details.open = count > 0; details.className = 'xztb-clean-group';
-        const summaryEl = document.createElement('summary'); summaryEl.textContent = `${title}（${count}）`; details.appendChild(summaryEl);
-        if (!count) { const empty = document.createElement('div'); empty.className = 'xztb-note'; empty.textContent = '没有发现可清理项目。'; details.appendChild(empty); box.appendChild(details); return; }
+    const renderGroup = (title, rows, key, detailFn, disabledFn = () => false) => {
+        const details = document.createElement('details'); details.open = rows.length > 0; details.className = 'xztb-clean-group';
+        const summaryEl = document.createElement('summary'); summaryEl.textContent = `${title}（${rows.length}）`; details.appendChild(summaryEl);
+        if (!rows.length) { const empty = document.createElement('div'); empty.className = 'xztb-note'; empty.textContent = '没有发现。'; details.appendChild(empty); box.appendChild(details); return; }
         const list = document.createElement('div'); list.className = 'xztb-list';
         for (const rowData of rows) {
             const label = document.createElement('label'); label.className = 'xztb-check-row';
-            const input = document.createElement('input'); input.type = 'checkbox'; input.disabled = disabledFn(rowData); input.dataset[key] = '1';
-            input.value = rowData[key] ?? rowData.name ?? rowData.fileId ?? rowData.fileName ?? '';
-            const text = document.createElement('span'); const titleEl = document.createElement('b'); titleEl.textContent = rowData.name || rowData.fileName || rowData.characterName;
+            const input = document.createElement('input'); input.type = 'checkbox'; input.disabled = disabledFn(rowData); input.dataset[key] = '1'; input.value = rowData[key] ?? rowData.name ?? '';
+            const text = document.createElement('span'); const titleEl = document.createElement('b'); titleEl.textContent = rowData.name || rowData.fileName || rowData.characterName || rowData.id;
             const small = document.createElement('small'); small.textContent = detailFn(rowData); text.append(titleEl, small); label.append(input, text); list.appendChild(label);
         }
-        details.appendChild(list); const actions = document.createElement('div'); actions.className = 'xztb-row';
+        details.appendChild(list);
+        const actions = document.createElement('div'); actions.className = 'xztb-row';
         const all = document.createElement('button'); all.type = 'button'; all.className = 'menu_button'; all.textContent = '全选'; all.addEventListener('click', () => list.querySelectorAll('input:not(:disabled)').forEach(x => x.checked = true));
-        const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'menu_button'; clear.textContent = '清理选中';
-        clear.dataset.cleanAction = key; actions.append(all, clear); details.appendChild(actions); box.appendChild(details);
+        const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'menu_button'; clear.textContent = '清理选中'; clear.dataset.cleanAction = key; actions.append(all, clear); details.appendChild(actions); box.appendChild(details);
     };
-
-    renderGroup('🌍 角色卡遗留世界书', state.worldCandidates.length, state.worldCandidates, 'worldId', r => `${r.provenance}${r.sourceCharacter ? `；原角色：${r.sourceCharacter}` : ''}${r.sourceName ? `；书名：${r.sourceName}` : ''}；${r.entries} 个条目；当前没有角色绑定此书`);
-    renderGroup('🗨️ 超过设定天数未使用的聊天', state.chatCandidates.length, state.chatCandidates, 'chatId', r => `${formatDate(r.time)}${r.current ? '；当前聊天，不允许删除' : ''}`, r => r.current);
-    renderGroup('🌐 网页 Cache Storage', state.webCaches.length, state.webCaches, 'cacheId', r => `${r.entries} 个缓存请求；删除后网页资源可能需要重新缓存`);
-
+    renderGroup('🌍 角色卡导入后遗留世界书', state.worldCandidates, 'worldId', r => `${r.provenance}${r.sourceName ? `；Character Book 名称：${r.sourceName}` : ''}；${r.entries} 个条目；当前没有活动引用`);
+    renderGroup('🗨️ 超过设定天数未使用的聊天', state.chatCandidates, 'chatId', r => `${formatDate(r.time)}；角色：${r.characterName}${r.current ? '；当前聊天，不允许删除' : ''}`, r => r.current);
+    renderGroup('🌐 浏览器 Cache Storage', state.webCaches, 'cacheId', r => `${r.entries} 个缓存请求；删除后相关网页资源可能重新缓存`);
     const host = document.createElement('details'); host.className = 'xztb-clean-group';
-    const hs = document.createElement('summary'); hs.textContent = '🧹 TauriTavern 宿主缓存 / 临时文件'; host.appendChild(hs);
-    const hnote = document.createElement('div'); hnote.className = 'xztb-note';
-    const caps = state.host;
-    hnote.textContent = (caps.cacheScan || caps.tempScan) ? '检测到宿主清理能力，后续可接入真实扫描结果。' : '当前版本没有公开可安全调用的宿主临时文件/HTTP 缓存清理 API，因此不猜目录、不直接删除。';
+    const hs = document.createElement('summary'); hs.textContent = '🧹 TauriTavern 临时文件 / 热路径缓存'; host.appendChild(hs);
+    const caps = state.host; const hnote = document.createElement('div'); hnote.className = 'xztb-note';
+    hnote.textContent = (caps.cacheScan || caps.tempScan) ? '宿主暴露了相关能力，但当前公开 API 尚未形成可稳定通用的扫描/删除契约；本版只显示能力探测结果，不自动改动。' : '当前版本没有公开可安全调用的宿主临时文件/HTTP 缓存扫描接口；本版不猜目录、不直接删除。';
     host.appendChild(hnote); box.appendChild(host);
-
-    if (state.errors.length) {
-        const error = document.createElement('div'); error.className = 'xztb-note'; error.textContent = `有 ${state.errors.length} 项读取失败，未列入清理。`;
-        box.appendChild(error);
+    if (state.extensionCandidates.length) {
+        const ext = document.createElement('details'); ext.className = 'xztb-clean-group'; ext.open = true;
+        const es = document.createElement('summary'); es.textContent = `🧩 可疑扩展设置残留（${state.extensionCandidates.length}）`; ext.appendChild(es);
+        const list = document.createElement('div'); list.className = 'xztb-list';
+        state.extensionCandidates.forEach(r => { const div = document.createElement('div'); div.className = 'xztb-check-row'; div.innerHTML = `<span><b>${escapeHtml(r.id)}</b><small>${escapeHtml(r.note)}</small></span>`; list.appendChild(div); });
+        ext.appendChild(list); box.appendChild(ext);
     }
+    if (state.errors.length) { const error = document.createElement('div'); error.className = 'xztb-note'; error.textContent = `有 ${state.errors.length} 个扫描子项失败，失败项不会加入清理。`; box.appendChild(error); }
 }
-
 async function scanAllCleanup(root) {
-    const status = root.querySelector('[data-clean-status]');
-    status.textContent = '正在扫描…';
-    root.querySelector('[data-clean-results]').innerHTML = '';
-    const state = { worldCandidates: [], chatCandidates: [], webCaches: [], host: {}, errors: [] };
+    const status = root.querySelector('[data-clean-status]'); status.textContent = '正在全面扫描…'; root.querySelector('[data-clean-results]').innerHTML = '';
+    const state = { worldCandidates: [], chatCandidates: [], webCaches: [], extensionCandidates: [], host: {}, errors: [] };
     try {
         const characters = await getCharacters();
-        const livePrimaryLinks = new Map();
-        for (const character of characters) {
-            const world = getWorldBindingNames(character);
-            if (world) livePrimaryLinks.set(world, true);
-        }
-        const [worldResult, chatResult, webResult, host] = await Promise.all([
-            scanEmbeddedWorlds(livePrimaryLinks, characters, s => status.textContent = s),
+        const [worldResult, chatResult, webResult, hostResult, extResult] = await Promise.allSettled([
+            scanEmbeddedWorlds(characters, s => status.textContent = s),
             scanOldChats(Number(root.querySelector('[data-chat-days]').value) || 15, characters, s => status.textContent = s),
             scanWebCaches(),
             discoverHostCleanup(),
+            scanLocalTempAndExtensionHints(),
         ]);
-        state.worldCandidates = worldResult.candidates;
-        state.chatCandidates = chatResult.candidates;
-        state.webCaches = webResult.caches;
-        state.host = host;
-        state.errors = [...worldResult.errors, ...chatResult.errors];
-        root.__xztbCleanState = state;
-        renderCleanResults(root, state);
-        status.textContent = `扫描完成：世界书 ${worldResult.candidates.length}，旧聊天 ${chatResult.candidates.length}，网页缓存 ${webResult.caches.length}。`;
-    } catch (error) {
-        console.error('[小众工具箱] 清理扫描失败:', error);
-        status.textContent = `扫描失败：${error?.message || error}`;
-    }
+        if (worldResult.status === 'fulfilled') state.worldCandidates = worldResult.value.candidates; else state.errors.push(worldResult.reason);
+        if (chatResult.status === 'fulfilled') { state.chatCandidates = chatResult.value.candidates; state.errors.push(...chatResult.value.errors); } else state.errors.push(chatResult.reason);
+        if (webResult.status === 'fulfilled') state.webCaches = webResult.value.caches; else state.errors.push(webResult.reason);
+        if (hostResult.status === 'fulfilled') state.host = hostResult.value; else state.errors.push(hostResult.reason);
+        if (extResult.status === 'fulfilled') state.extensionCandidates = extResult.value.settingsCandidates; else state.errors.push(extResult.reason);
+        root.__xztbCleanState = state; renderCleanResults(root, state);
+        status.textContent = `全面扫描完成：世界书 ${state.worldCandidates.length}，旧聊天 ${state.chatCandidates.length}，网页缓存 ${state.webCaches.length}。`;
+    } catch (error) { console.error('[小众工具箱] 清理扫描失败:', error); status.textContent = `扫描失败：${error?.message || error}`; }
 }
-
 async function handleCleanAction(root, key) {
-    const list = root.querySelectorAll(`input[data-${key}]:checked`);
-    if (!list.length) return;
-    if (!confirm('确定删除选中的数据吗？此操作会直接调用 TauriTavern 的删除接口。')) return;
+    const list = root.querySelectorAll(`input[data-${key}]:checked`); if (!list.length) return;
+    if (!confirm(`确定清理选中的 ${list.length} 项吗？当前操作会直接调用 TauriTavern/SillyTavern 的删除接口。`)) return;
     try {
-        if (key === 'worldId') {
-            const ids = [...list].map(x => x.value); const deleted = await clearSelectedWorlds(ids);
-            root.querySelector('[data-clean-status]').textContent = `已删除 ${deleted} 个世界书。`;
-        } else if (key === 'chatId') {
-            const items = [...list].map(x => { const row = root.__xztbCleanState.chatCandidates.find(r => r.fileName === x.value); return row; }).filter(Boolean);
-            const deleted = await clearSelectedChats(items);
-            root.querySelector('[data-clean-status]').textContent = `已删除 ${deleted} 个聊天。`;
-        } else if (key === 'cacheId') {
-            let deleted = 0; for (const name of [...list].map(x => x.value)) if (await caches.delete(name)) deleted++;
-            root.querySelector('[data-clean-status]').textContent = `已删除 ${deleted} 个网页缓存。`;
-        }
-        await scanAllCleanup(root);
+        let message = '';
+        if (key === 'worldId') { const result = await clearSelectedWorlds([...list].map(x => x.value)); message = `已删除世界书 ${result.deleted} 个${result.failures ? `，失败 ${result.failures} 个` : ''}。`; }
+        else if (key === 'chatId') { const items = [...list].map(x => root.__xztbCleanState.chatCandidates.find(r => r.chatId === x.value)).filter(Boolean); const result = await clearSelectedChats(items); message = `已删除聊天 ${result.deleted} 个${result.failures ? `，失败 ${result.failures} 个` : ''}。`; }
+        else if (key === 'cacheId') { let deleted = 0, failures = 0; for (const name of [...list].map(x => x.value)) { try { if (await caches.delete(name)) deleted++; else failures++; } catch { failures++; } } message = `已删除网页缓存 ${deleted} 个${failures ? `，失败 ${failures} 个` : ''}。`; }
+        root.querySelector('[data-clean-status]').textContent = message; await scanAllCleanup(root);
     } catch (error) { root.querySelector('[data-clean-status]').textContent = `清理失败：${error?.message || error}`; }
 }
 
