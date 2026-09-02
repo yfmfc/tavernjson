@@ -1,0 +1,14 @@
+{
+  "display_name": "小众工具箱",
+  "loading_order": 1000,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "小众工具箱",
+  "version": "0.2.9",
+  "homePage": "",
+  "hooks": {
+    "activate": "init"
+  }
+}
