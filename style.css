@@ -6,27 +6,13 @@
 .xztb-hidden { display: none !important; }
 .xztb-group { margin: 0.65rem 0; }
 .xztb-subtitle { font-weight: 600; margin-bottom: 0.35rem; }
-.xztb-note, .xztb-status { opacity: 0.8; font-size: 0.9em; margin: 0.35rem 0; }
+.xztb-note, .xztb-status, .xztb-result, .xztb-summary { opacity: 0.8; font-size: 0.9em; margin: 0.35rem 0; }
 .xztb-row { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.5rem; flex-wrap: wrap; }
 .xztb-row > * { flex: 1 1 8rem; }
 .xztb-list { max-height: 18rem; overflow: auto; }
 .xztb-check-row { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.4rem 0.25rem; }
 .xztb-check-row small { display: block; opacity: 0.72; margin-top: 0.15rem; }
-/* iOS/WebView-friendly local file picker: the actual input stays available to
-   the browser, while a normal visible label is the user-facing button. */
-.xztb-file-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    white-space: nowrap;
-}
-.xztb-file-button {
-    display: inline-block;
-    width: auto;
-    margin: 0.25rem 0;
-    cursor: pointer;
-    user-select: none;
-}
+.xztb-inline-label { display: flex; align-items: center; gap: 0.35rem; }
+.xztb-days { max-width: 6rem; }
+.xztb-clean-group { margin-top: 0.6rem; }
+.xztb-clean-group > summary { cursor: pointer; user-select: none; padding: 0.35rem 0; }
