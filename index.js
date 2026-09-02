@@ -1,5 +1,5 @@
 const EXT_ID = 'xiaozhong-toolbox';
-const EXT_VERSION = '0.3.6';
+const EXT_VERSION = '0.3.8';
 const STORE_NAMESPACE = 'xiaozhong-toolbox';
 
 function getHost() {
@@ -1119,8 +1119,9 @@ function getExtensionIdentity(manifest, fallbackFolder = '') {
     return folder ? `folder:${folder.toLowerCase()}` : '';
 }
 
-async function discoverInstalledExtensions() {
+async function discoverInstalledExtensions(mode = 'global') {
     const result = new Map();
+    const targetRoot = mode === 'local' ? 'local' : 'global';
     try {
         const response = await stFetch('/api/extensions/discover');
         if (!response.ok) return result;
@@ -1129,14 +1130,17 @@ async function discoverInstalledExtensions() {
         for (const entry of entries) {
             const rawName = typeof entry === 'string' ? entry : entry?.name;
             if (!rawName) continue;
+            const entryType = typeof entry === 'object' ? String(entry?.type || '').toLowerCase() : '';
+            if (entryType && entryType !== targetRoot && !(mode === 'global' && entryType === 'third-party')) continue;
             const safeName = String(rawName || '').replace(/^third-party[\/]?/, '').replace(/^local[\/]?/, '').replace(/^global[\/]?/, '');
             if (!safeName) continue;
+            const basePath = mode === 'local' ? '/scripts/extensions/' : '/scripts/extensions/third-party/';
             try {
-                const manifestResponse = await stFetch(`/scripts/extensions/third-party/${encodeURIComponent(safeName)}/manifest.json`);
+                const manifestResponse = await stFetch(`${basePath}${encodeURIComponent(safeName)}/manifest.json`);
                 if (!manifestResponse.ok) continue;
                 const manifest = await manifestResponse.json();
                 const identity = getExtensionIdentity(manifest, safeName);
-                result.set(identity, { ...manifest, folder: safeName, type: typeof entry === 'object' ? entry?.type : undefined });
+                result.set(identity, { ...manifest, folder: safeName, type: entryType || targetRoot });
             } catch {
             }
         }
@@ -1167,21 +1171,36 @@ async function inspectZip(file, status, actions, metaContainer) {
     const archiveFolder = sanitizeExtensionFolder(manifestFile.root || file.name.replace(/\.zip$/i, ''));
     const extensionIdentity = getExtensionIdentity(manifest, archiveFolder);
     const extensionName = manifest.name ? sanitizeExtensionFolder(manifest.name) : archiveFolder;
-    const installed = await discoverInstalledExtensions();
-    const installedEntry = installed.get(extensionIdentity) || null;
     actions.innerHTML = '';
-    const replaceMode = installedEntry ? 'replace' : 'install';
-    const comparison = installedEntry ? compareVersions(manifest.version, installedEntry.version) : null;
-    metaContainer.textContent = installedEntry
-        ? `扩展：${manifest.display_name || extensionName}；本机目录 ${installedEntry.folder || '未知'}；本机 ${installedEntry.version || '未知'}；ZIP ${manifest.version}${comparison === 1 ? '（可升级）' : comparison === 0 ? '（相同版本）' : comparison === -1 ? '（ZIP 版本较旧）' : ''}。`
-        : `扩展：${manifest.display_name || extensionName}；版本 ${manifest.version}；未发现同身份已安装扩展。`;
-    const confirmButton = document.createElement('button');
-    confirmButton.type = 'button';
-    confirmButton.className = 'menu_button';
-    confirmButton.textContent = installedEntry ? '确认替换 / 升级' : '确认导入';
-    confirmButton.addEventListener('click', () => installZipViaLocal(file, manifest, extensionName, status, comparison, installedEntry));
-    actions.appendChild(confirmButton);
-    return { manifest, extensionName, installedEntry, comparison, replaceMode };
+    const modeSelect = document.createElement('select');
+    modeSelect.className = 'text_pole';
+    modeSelect.innerHTML = '<option value="global">所有用户</option><option value="local">仅为我</option>';
+    const modeLabel = document.createElement('label');
+    modeLabel.className = 'xztb-inline-label';
+    modeLabel.textContent = '安装范围';
+    modeLabel.appendChild(modeSelect);
+    const render = async () => {
+        const installed = await discoverInstalledExtensions(modeSelect.value);
+        const installedEntry = installed.get(extensionIdentity) || null;
+        const comparison = installedEntry ? compareVersions(manifest.version, installedEntry.version) : null;
+        const modeText = modeSelect.value === 'local' ? '仅为我' : '所有用户';
+        const comparisonText = comparison === 1 ? '（检测到升级）' : comparison === 0 ? '（版本相同，可覆盖）' : comparison === -1 ? '（检测到降级，允许覆盖）' : '';
+        metaContainer.textContent = installedEntry
+            ? `安装范围：${modeText}；扩展：${manifest.display_name || extensionName}；本机目录 ${installedEntry.folder || '未知'}；本机 ${installedEntry.version || '未知'}；ZIP ${manifest.version}${comparisonText}。`
+            : `安装范围：${modeText}；扩展：${manifest.display_name || extensionName}；版本 ${manifest.version}；该范围未发现同身份已安装扩展。`;
+        const confirmButton = document.createElement('button');
+        confirmButton.type = 'button';
+        confirmButton.className = 'menu_button';
+        confirmButton.textContent = installedEntry ? '确认完整替换' : '确认导入';
+        confirmButton.addEventListener('click', () => installZipViaLocal(file, manifest, extensionName, status, comparison, installedEntry, modeSelect.value));
+        actions.innerHTML = '';
+        actions.appendChild(modeLabel);
+        actions.appendChild(confirmButton);
+    };
+    actions.appendChild(modeLabel);
+    modeSelect.addEventListener('change', render);
+    await render();
+    return { manifest, extensionName };
 }
 
 function getTauriGlobals() {
@@ -1302,8 +1321,10 @@ async function verifyNativeDataRoot(rootPath) {
     return true;
 }
 
-async function findExistingNativeExtension(rootPath, manifest, archiveFolder) {
-    const base = joinNativePath(rootPath, 'extensions', 'third-party');
+async function findExistingNativeExtension(rootPath, manifest, archiveFolder, mode = 'global') {
+    const base = mode === 'local'
+        ? joinNativePath(rootPath, 'default-user', 'extensions')
+        : joinNativePath(rootPath, 'extensions', 'third-party');
     let entries;
     try {
         entries = await nativeReadDir(base);
@@ -1345,16 +1366,25 @@ async function resolveInstalledTarget(defaultMode = 'global', manifest = null, a
     }
     if (!root) root = await chooseExtensionsRoot();
     if (!root) return null;
+    const mode = defaultMode === 'local' ? 'local' : 'global';
     if (root.kind === 'native') {
         await verifyNativeDataRoot(root.path);
-        const base = joinNativePath(root.path, 'extensions', 'third-party');
+        const base = mode === 'local'
+            ? joinNativePath(root.path, 'default-user', 'extensions')
+            : joinNativePath(root.path, 'extensions', 'third-party');
         await nativeMkdir(base);
-        const existing = manifest ? await findExistingNativeExtension(root.path, manifest, archiveFolder) : null;
-        return { kind: 'native', base, mode: 'global', existingFolder: existing?.folder || '' };
+        const existing = manifest ? await findExistingNativeExtension(root.path, manifest, archiveFolder, mode) : null;
+        return { kind: 'native', base, mode, existingFolder: existing?.folder || '' };
     }
-    const extensionHandle = await root.handle.getDirectoryHandle('extensions', { create: true });
-    const baseHandle = await extensionHandle.getDirectoryHandle('third-party', { create: true });
-    return { kind: 'handle', baseHandle, mode: 'global' };
+    const extensionHandle = mode === 'local'
+        ? await root.handle.getDirectoryHandle('default-user', { create: true })
+        : root.handle;
+    const baseHandle = await extensionHandle.getDirectoryHandle('extensions', { create: true });
+    if (mode === 'global') {
+        const thirdPartyHandle = await baseHandle.getDirectoryHandle('third-party', { create: true });
+        return { kind: 'handle', baseHandle: thirdPartyHandle, mode };
+    }
+    return { kind: 'handle', baseHandle, mode };
 }
 
 async function getNativeZipFiles(file) {
@@ -1434,18 +1464,26 @@ async function installZipToNativeRoot(file, manifest, extensionName, installedEn
     }
     if (!packagedManifest?.version || !packagedManifest?.js) throw new Error('ZIP 内 manifest.json 缺少 version 或 js 字段。');
     const archiveFolder = sanitizeExtensionFolder(zipInfo?.root || extensionName || packagedManifest.name || file.name.replace(/\.zip$/i, ''));
-    const target = await resolveInstalledTarget('global', packagedManifest, archiveFolder);
+    const target = await resolveInstalledTarget(mode, packagedManifest, archiveFolder);
     if (!target) return { cancelled: true };
     const folder = archiveFolder || sanitizeExtensionFolder(packagedManifest.name || extensionName || 'extension');
     if (target.kind === 'native') {
         const dest = joinNativePath(target.base, folder);
-        const oldFolder = target.existingFolder && target.existingFolder !== folder ? target.existingFolder : folder;
+        const oldFolder = target.existingFolder || folder;
         const oldPath = joinNativePath(target.base, oldFolder);
-        const stamp = `${Date.now()}`;
-        const backup = joinNativePath(target.base, `.${oldFolder}.backup-${stamp}`);
+        const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const backup = joinNativePath(target.base, `.${sanitizeExtensionFolder(oldFolder)}.backup-${stamp}`);
         const existed = await nativeExists(oldPath);
         const conflictingDest = oldPath !== dest && await nativeExists(dest);
         if (conflictingDest) throw new Error(`目标文件夹 ${folder} 已存在，但与现有扩展身份不一致，已停止覆盖以避免误伤其他扩展。`);
+        const probe = joinNativePath(target.base, `.${EXT_ID}-install-probe-${stamp}`);
+        try {
+            await nativeWriteFile(probe, new TextEncoder().encode('ok'));
+            await nativeRemove(probe);
+        } catch (error) {
+            try { await nativeRemove(probe); } catch {}
+            throw new Error(`没有获得对扩展目录的写入权限：${error?.message || error}`);
+        }
         if (existed) await nativeRename(oldPath, backup);
         try {
             await nativeMkdir(dest);
@@ -1461,6 +1499,9 @@ async function installZipToNativeRoot(file, manifest, extensionName, installedEn
             const installedIdentity = getExtensionIdentity(installedManifest, folder);
             const expectedIdentity = getExtensionIdentity(packagedManifest, folder);
             if (installedManifest.version !== packagedManifest.version || installedIdentity !== expectedIdentity) throw new Error('安装后校验失败：磁盘中的 manifest 与 ZIP 不一致。');
+            for (const item of files) {
+                if (!(await nativeExists(joinNativePath(dest, ...item.path.split('/'))))) throw new Error(`安装后校验失败：缺少文件 ${item.path}`);
+            }
             if (oldPath !== dest && await nativeExists(oldPath)) await nativeRemove(oldPath);
             if (existed) await nativeRemove(backup);
         } catch (error) {
@@ -1470,7 +1511,7 @@ async function installZipToNativeRoot(file, manifest, extensionName, installedEn
             }
             throw error;
         }
-        return { installed: true, mode: 'global', path: dest, folder, fileCount: files.length, verifiedVersion: packagedManifest.version, replaced: existed || Boolean(target.existingFolder) };
+        return { installed: true, mode: target.mode, path: dest, folder, fileCount: files.length, verifiedVersion: packagedManifest.version, replaced: existed || Boolean(target.existingFolder) };
     }
     const oldFolder = target.existingFolder || folder;
     if (oldFolder !== folder) {
@@ -1483,17 +1524,25 @@ async function installZipToNativeRoot(file, manifest, extensionName, installedEn
     const installedText = await (await installedManifestFile.getFile()).text();
     const installedManifest = JSON.parse(installedText);
     if (installedManifest.version !== packagedManifest.version) throw new Error('安装后校验失败：磁盘中的 manifest 版本不一致。');
-    return { installed: true, mode: 'global', fileCount: files.length, verifiedVersion: packagedManifest.version, folder, replaced: Boolean(target.existingFolder) };
+    return { installed: true, mode: target.mode, fileCount: files.length, verifiedVersion: packagedManifest.version, folder, replaced: Boolean(target.existingFolder) };
 }
 
-async function installZipViaLocal(file, manifest, extensionName, status, comparison, installedEntry) {
+async function installZipViaLocal(file, manifest, extensionName, status, comparison, installedEntry, mode = 'global') {
     try {
-        const result = await installZipToNativeRoot(file, manifest, extensionName, installedEntry, 'global');
+        const result = await installZipToNativeRoot(file, manifest, extensionName, installedEntry, mode);
         if (result.cancelled) {
             status.textContent = '已取消扩展安装。';
             return;
         }
-        status.textContent = `全局第三方扩展已${result.replaced ? '完整替换' : '安装'}：${manifest.display_name || extensionName} ${result.verifiedVersion}。目录：${result.folder}；已写入 ${result.fileCount} 个文件，并完成磁盘校验。请刷新 TauriTavern 扩展列表。`;
+        const scopeText = result.mode === 'local' ? '仅为我' : '所有用户';
+        const actionText = result.replaced ? '完整替换' : '安装';
+        status.textContent = `${scopeText}扩展已${actionText}：${manifest.display_name || extensionName} ${result.verifiedVersion}。目录：${result.folder}；已写入 ${result.fileCount} 个文件，并完成磁盘校验。TauriTavern 将自动刷新。`;
+        setTimeout(() => {
+            try {
+                globalThis.location?.reload?.();
+            } catch {
+            }
+        }, 900);
     } catch (error) {
         status.textContent = `扩展安装失败：${error?.message || error}`;
     }
