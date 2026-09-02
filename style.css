@@ -1,0 +1,226 @@
+/* 小众工具箱样式规范，完美适配酒馆暗色风格与原生控件 */
+.nt-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 12px 6px;
+    color: var(--SmartThemeBodyColor, #e0e0e0);
+    font-size: 14px;
+}
+
+.nt-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+    padding-bottom: 8px;
+    overflow-x: auto;
+}
+
+.nt-tab-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: var(--SmartThemeQuoteColor, rgba(255, 255, 255, 0.05));
+    color: var(--SmartThemeBodyColor, #ccc);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.nt-tab-btn.active {
+    background: var(--SmartThemeBlurTintColor, #2c5282);
+    color: #fff;
+    border-color: var(--SmartThemeBorderColor, #4299e1);
+    font-weight: bold;
+}
+
+.nt-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.nt-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    border: 1px solid var(--SmartThemeBorderColor, #333);
+}
+
+.nt-btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.nt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    background: var(--SmartThemeQuoteColor, #2a2a2a);
+    color: var(--SmartThemeBodyColor, #eee);
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s ease;
+}
+
+.nt-btn:hover {
+    background: var(--SmartThemeHoverColor, #3d3d3d);
+}
+
+.nt-btn.danger {
+    background: #742a2a;
+    border-color: #9b2c2c;
+    color: #fff;
+}
+
+.nt-btn.danger:hover {
+    background: #9b2c2c;
+}
+
+.nt-btn.primary {
+    background: #2b6cb0;
+    border-color: #3182ce;
+    color: #fff;
+}
+
+.nt-btn.primary:hover {
+    background: #3182ce;
+}
+
+/* 折叠分类模块 */
+.nt-category {
+    border: 1px solid var(--SmartThemeBorderColor, #333);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
+}
+
+.nt-category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid transparent;
+}
+
+.nt-category.expanded .nt-category-header {
+    border-bottom-color: var(--SmartThemeBorderColor, #333);
+}
+
+.nt-category-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.nt-item-list {
+    display: none;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 8px;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.nt-category.expanded .nt-item-list {
+    display: flex;
+}
+
+.nt-item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 12px;
+}
+
+.nt-item-row:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.nt-item-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nt-badge {
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: bold;
+    background: #4a5568;
+    color: #edf2f7;
+}
+
+.nt-badge.orphan {
+    background: #c53030;
+}
+
+.nt-badge.active {
+    background: #2f855a;
+}
+
+.nt-badge.unknown {
+    background: #d69e2e;
+}
+
+.nt-status-box {
+    padding: 10px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px dashed var(--SmartThemeBorderColor, #444);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.nt-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nt-form-label {
+    font-weight: bold;
+    font-size: 12px;
+    color: #a0aec0;
+}
+
+.nt-file-drop {
+    border: 2px dashed var(--SmartThemeBorderColor, #4a5568);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.nt-file-drop:hover {
+    border-color: #63b3ed;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.nt-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}

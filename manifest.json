@@ -1,0 +1,12 @@
+{
+  "display_name": "小众工具箱",
+  "name": "tauritavern-niche-toolbox",
+  "version": "1.0.0",
+  "author": "TauriTavern Community",
+  "description": "集成本地扫描清理、ZIP扩展离线导入、高质量图片转换及Preset JSON排序整理的实用工具箱",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css"
+}
