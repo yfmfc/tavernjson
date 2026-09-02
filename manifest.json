@@ -6,9 +6,10 @@
   "js": "index.js",
   "css": "style.css",
   "author": "小众工具箱",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "homePage": "",
   "hooks": {
     "activate": "init"
-  }
+  },
+  "name": "xiaozhong-toolbox"
 }
