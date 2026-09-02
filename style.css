@@ -1,0 +1,14 @@
+#json-transformer-settings .inline-drawer-content { padding: 8px; }
+#json-transformer-settings label { display: block; margin: 7px 0; }
+#json-transformer-settings input[type=text],
+#json-transformer-settings input[type=number],
+#json-transformer-settings select,
+#json-transformer-settings textarea { width: 100%; box-sizing: border-box; }
+#json-transformer-settings textarea { font-family: monospace; resize: vertical; }
+#json-transformer-settings .jtx-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+#json-transformer-settings .jtx-row label { flex: 1; margin: 0; }
+#json-transformer-settings .jtx-section { margin-top: 8px; padding: 8px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; }
+#json-transformer-settings .jtx-section summary { cursor: pointer; font-weight: 700; user-select: none; }
+#json-transformer-settings .jtx-buttons { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+#json-transformer-settings .jtx-hint { margin-top: 8px; opacity: .75; font-size: .9em; line-height: 1.45; }
+#json-transformer-settings .jtx-test-output { max-height: 55vh; overflow: auto; text-align: left; white-space: pre-wrap; margin: 0; }
