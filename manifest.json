@@ -1,0 +1,11 @@
+{
+  "display_name": "小众工具箱",
+  "loading_order": 1,
+  "js": "index.js",
+  "css": "style.css",
+  "author": "OpenAI",
+  "version": "0.1.0",
+  "homePage": "https://github.com/Darkatse/TauriTavern",
+  "auto_update": false,
+  "minimum_client_version": "2.1.0"
+}
