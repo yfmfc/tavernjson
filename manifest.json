@@ -1,0 +1,14 @@
+{
+    "display_name": "小众工具箱 Niche Toolbox",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "dependencies": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "User + Claude",
+    "version": "1.0.0",
+    "homePage": "",
+    "auto_update": false,
+    "minimum_client_version": "1.13.0"
+}

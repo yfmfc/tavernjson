@@ -1,0 +1,106 @@
+/* 只做布局，不覆盖任何颜色变量，保证跟随用户当前主题 */
+
+.nt-toolbox .inline-drawer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 6px;
+}
+
+.nt-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.nt-row label {
+    min-width: 90px;
+}
+
+.nt-hint {
+    opacity: 0.7;
+    font-size: 0.85em;
+}
+
+.nt-scroll-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
+    border-radius: 6px;
+    padding: 4px;
+}
+
+.nt-chat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
+}
+
+.nt-chat-item:last-child {
+    border-bottom: none;
+}
+
+.nt-chat-item .nt-chat-meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.nt-chat-item .nt-chat-meta .nt-chat-title {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nt-chat-item .nt-chat-meta .nt-chat-sub {
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.nt-chat-item.nt-disabled {
+    opacity: 0.5;
+}
+
+.nt-img-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nt-img-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+    border-radius: 6px;
+}
+
+.nt-img-row img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.nt-img-row .nt-img-meta {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85em;
+}
+
+.nt-format-params {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nt-preset-summary {
+    font-size: 0.85em;
+    opacity: 0.85;
+    white-space: pre-wrap;
+}

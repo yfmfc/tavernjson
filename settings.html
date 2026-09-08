@@ -1,0 +1,88 @@
+<div class="nt-toolbox">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>小众工具箱 Niche Toolbox</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <!-- ============ 功能1：聊天记录扫描清理 ============ -->
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>清理维护 · 聊天记录扫描清理</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <div class="nt-row">
+                        <label for="nt_cleanup_days">超过多少天未使用视为闲置：</label>
+                        <input id="nt_cleanup_days" class="text_pole" type="number" min="1" style="max-width:80px;" value="15" />
+                        <span>天</span>
+                    </div>
+                    <div class="nt-row">
+                        <label class="checkbox_label">
+                            <input id="nt_cleanup_include_group" type="checkbox" checked />
+                            <span>包含群组聊天</span>
+                        </label>
+                    </div>
+                    <div class="nt-row">
+                        <input id="nt_cleanup_scan_btn" class="menu_button" type="button" value="扫描" />
+                        <input id="nt_cleanup_select_all" class="menu_button" type="button" value="全选" />
+                        <input id="nt_cleanup_delete_btn" class="menu_button" type="button" value="删除选中" />
+                    </div>
+                    <div class="nt-hint" id="nt_cleanup_status">尚未扫描</div>
+                    <div class="nt-scroll-list" id="nt_cleanup_list"></div>
+                </div>
+            </div>
+
+            <!-- ============ 功能2：图片转换 ============ -->
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>图片转换</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <div class="nt-row">
+                        <input id="nt_img_file_input" type="file" accept="image/*" multiple />
+                    </div>
+                    <div class="nt-row">
+                        <label for="nt_img_format">目标格式：</label>
+                        <select id="nt_img_format" class="text_pole" style="max-width:140px;">
+                            <option value="png" selected>PNG</option>
+                            <option value="jpeg">JPEG</option>
+                            <option value="webp">WEBP</option>
+                        </select>
+                    </div>
+                    <div class="nt-format-params" id="nt_img_params">
+                        <!-- 根据格式动态渲染质量/分辨率控件 -->
+                    </div>
+                    <div class="nt-row">
+                        <input id="nt_img_convert_btn" class="menu_button" type="button" value="转换" />
+                    </div>
+                    <div class="nt-img-list" id="nt_img_list"></div>
+                </div>
+            </div>
+
+            <!-- ============ 功能3：Preset JSON 整理 ============ -->
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Preset 整理</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <div class="nt-row">
+                        <input id="nt_preset_file_input" type="file" accept="application/json,.json" />
+                    </div>
+                    <div class="nt-row" id="nt_preset_ref_row" style="display:none;">
+                        <label for="nt_preset_ref_select">参考排序（character_id）：</label>
+                        <select id="nt_preset_ref_select" class="text_pole" style="max-width:200px;"></select>
+                    </div>
+                    <div class="nt-preset-summary" id="nt_preset_summary"></div>
+                    <div class="nt-row">
+                        <input id="nt_preset_organize_btn" class="menu_button" type="button" value="整理并导出 JSON" disabled />
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
