@@ -1017,7 +1017,11 @@ function createUI() {
             <div class="xztb-panel xztb-hidden" data-panel="install">
                 <div class="xztb-group">
                     <div class="xztb-subtitle">📦 从本机选择 ZIP</div>
-                    <input class="text_pole" type="file" accept=".zip,application/zip,application/x-zip-compressed" data-zip-file>
+                    <div class="xztb-file-picker">
+                        <input class="xztb-file-input" type="file" accept=".zip,application/zip,application/x-zip-compressed" data-zip-file>
+                        <button class="menu_button" type="button" data-zip-pick>选择本机 ZIP 文件</button>
+                        <span class="xztb-file-name" data-zip-file-name>未选择文件</span>
+                    </div>
                     <div class="xztb-row">
                         <label class="xztb-inline-label">安装范围
                             <select class="text_pole" data-zip-scope>
@@ -1034,7 +1038,11 @@ function createUI() {
             <div class="xztb-panel xztb-hidden" data-panel="image">
                 <div class="xztb-group">
                     <div class="xztb-subtitle">🖼️ 图片格式转换</div>
-                    <input class="text_pole" type="file" accept="image/*" data-image-file>
+                    <div class="xztb-file-picker">
+                        <input class="xztb-file-input" type="file" accept="image/*" data-image-file>
+                        <button class="menu_button" type="button" data-image-pick>选择本机图片</button>
+                        <span class="xztb-file-name" data-image-file-name>未选择文件</span>
+                    </div>
                     <div class="xztb-row">
                         <label class="xztb-inline-label">输出格式
                             <select class="text_pole" data-image-format>
@@ -1055,7 +1063,11 @@ function createUI() {
                 <div class="xztb-group">
                     <div class="xztb-subtitle">📋 Preset JSON 整理</div>
                     <div class="xztb-note">只按照 JSON 内已有的 prompt_order 重排 prompts[]；不修改条目内容、ID、prompt_order 或其他数据。</div>
-                    <input class="text_pole" type="file" accept="application/json,.json" data-preset-file>
+                    <div class="xztb-file-picker">
+                        <input class="xztb-file-input" type="file" accept="application/json,.json" data-preset-file>
+                        <button class="menu_button" type="button" data-preset-pick>选择本机 Preset JSON</button>
+                        <span class="xztb-file-name" data-preset-file-name>未选择文件</span>
+                    </div>
                     <button class="menu_button" type="button" data-preset-sort>整理并生成文件</button>
                     <div class="xztb-status" data-preset-status></div>
                 </div>
@@ -1082,6 +1094,18 @@ function createUI() {
         root.querySelectorAll('[data-clean-item]').forEach(input => input.checked = false);
         updateCleanSelection(root);
     });
+    const bindFilePicker = (buttonSelector, inputSelector, nameSelector) => {
+        const button = root.querySelector(buttonSelector);
+        const input = root.querySelector(inputSelector);
+        const name = root.querySelector(nameSelector);
+        button.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => {
+            name.textContent = input.files?.[0]?.name || '未选择文件';
+        });
+    };
+    bindFilePicker('[data-zip-pick]', '[data-zip-file]', '[data-zip-file-name]');
+    bindFilePicker('[data-image-pick]', '[data-image-file]', '[data-image-file-name]');
+    bindFilePicker('[data-preset-pick]', '[data-preset-file]', '[data-preset-file-name]');
     root.querySelector('[data-zip-file]').addEventListener('change', async event => {
         const file = event.target.files?.[0];
         if (!file) return;

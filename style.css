@@ -21,3 +21,7 @@
 .xztb-clean-group-header .xztb-check-title { flex: 1 1 auto; }
 .xztb-quality { flex: 2 1 14rem; }
 .xztb-quality input[type="range"] { min-width: 10rem; }
+
+.xztb-file-picker { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.45rem; }
+.xztb-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.xztb-file-name { min-width: 0; flex: 1 1 12rem; opacity: 0.78; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
