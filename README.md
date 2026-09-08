@@ -1,14 +1,16 @@
 # 小众工具箱
 
-TauriTavern 移动端实用扩展。
+TauriTavern 本地维护工具扩展。
 
 ## 功能
-- 清理维护：一键扫描旧聊天、角色卡导入遗留世界书、Cache Storage，并根据 TauriTavern 公开宿主能力探测可安全清理的缓存/临时文件。
-- 扩展导入：从本机选择 ZIP，进行 ZIP 检查并尝试调用宿主公开 ZIP 安装能力。
-- 图片转换：从本机选择图片，转换 PNG/JPEG/WEBP；PNG 采用体积控制，避免简单转码导致体积暴涨。
-- Preset JSON 整理：严格按照 JSON 内 `prompt_order` 的 identifier 顺序重排 `prompts[]`，不修改条目内容、ID、`prompt_order` 或其他数据。
 
-## 清理安全原则
-本扩展不会把“没有绑定角色的世界书”“未知目录”“未知插件文件”直接认定为垃圾。角色卡遗留世界书必须有 Character Book `originalData` 或工具在角色仍存在时记录过的角色卡世界书来源记录，并且当前已经没有角色主世界书绑定，才进入候选。
+- 清理维护：扫描旧聊天、角色卡导入后遗留的孤儿世界书、浏览器 Cache Storage，并提供逐类/全局选择与真实删除。
+- 扩展导入：从本机选择 ZIP，解析扩展结构、识别扩展身份、检测同名或疑似同名冲突，并提供“仅为我安装 / 为所有用户安装”的安装范围选择。
+- 图片转换：从本机选择图片，默认输出 PNG；JPEG/WEBP 提供质量控制，PNG 使用体积优先的重新编码策略。
+- Preset JSON 整理：按照 `prompt_order` 中的 `identifier` 顺序重排 `prompts[]`，其余 JSON 数据保持不变。
 
-网络/系统 HTTP 缓存、TauriTavern 私有热路径缓存、系统临时目录只有在宿主公开提供明确的安全扫描/清理能力时才处理；没有公开能力时只提示，不猜目录、不删除。
+## API 说明
+
+本扩展优先使用 TauriTavern 公开 Host Contract；需要兼容 SillyTavern 数据行为时使用公开 `/api/*` 兼容接口。
+
+当前 TauriTavern 公开第三方扩展 API 提供 Git URL 安装，不提供本地 ZIP 写入第三方扩展目录的公开接口。因此 ZIP 工具目前负责完整的本地 ZIP 解析、扩展识别和覆盖判断，但在宿主未提供本地安装 API 时不会调用私有 Rust command，也不会显示虚假的“安装成功”。
